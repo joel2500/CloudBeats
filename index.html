@@ -545,371 +545,236 @@
 </div>
 
 <script>
-// ─── CONFIG ───────────────────────────────────────────────────────────────────
+// ─── CONFIG ─────────────────────────────────────────────
 let CLIENT_ID = localStorage.getItem('cb_client_id') || '';
-let REDIRECT_URI = localStorage.getItem('cb_redirect_uri') || window.location.href.split('?')[0].split('#')[0];
-const SCOPES = ['Files.Read', 'User.Read'];
+let REDIRECT_URI = localStorage.getItem('cb_redirect_uri') ||
+  window.location.origin + window.location.pathname;
+
+const SCOPES = ['User.Read', 'Files.Read'];
 const GRAPH = 'https://graph.microsoft.com/v1.0';
 const AUDIO_EXTS = ['mp3','m4a','flac','wav','ogg','aac','opus','wma'];
 
-// ─── STATE ────────────────────────────────────────────────────────────────────
+// ─── STATE ──────────────────────────────────────────────
 let msalInstance = null;
 let accessToken = null;
-let currentFiles = [];
-let filteredFiles = [];
-let playlist = [];      // only audio files
+let playlist = [];
 let currentIndex = -1;
-let isPlaying = false;
-let shuffle = false;
-let repeat = false; // false | 'one' | 'all'
-let volume = 0.8;
-let muted = false;
-let breadcrumbs = [{ name: 'My Music', id: null }];
+let audio = document.getElementById('audio-player');
 
-const audio = document.getElementById('audio-player');
-
-// ─── MSAL INIT ────────────────────────────────────────────────────────────────
-function initMsal() {
-  if (!CLIENT_ID) return false;
-  try {
-    msalInstance = new msal.PublicClientApplication({
-      auth: { clientId: CLIENT_ID, redirectUri: REDIRECT_URI },
-      cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
-    });
-    return true;
-  } catch(e) { console.error(e); return false; }
+// ─── DEBUG HELPER ───────────────────────────────────────
+function log(msg, obj) {
+  console.log("[CloudBeats]", msg, obj || "");
 }
 
-async function getToken() {
-  if (!msalInstance) return null;
-  const accounts = msalInstance.getAllAccounts();
-  const req = { scopes: SCOPES };
+// ─── MSAL INIT ──────────────────────────────────────────
+function initMsal() {
   try {
+    if (!CLIENT_ID) {
+      alert("Client ID missing");
+      return false;
+    }
+
+    if (!window.msal) {
+      alert("MSAL library not loaded. Check CDN.");
+      return false;
+    }
+
+    log("Initializing MSAL...");
+
+    msalInstance = new msal.PublicClientApplication({
+      auth: {
+        clientId: CLIENT_ID,
+        redirectUri: REDIRECT_URI,
+        authority: "https://login.microsoftonline.com/common"
+      },
+      cache: {
+        cacheLocation: "localStorage"
+      }
+    });
+
+    log("MSAL initialized");
+    return true;
+
+  } catch (e) {
+    console.error(e);
+    alert("MSAL init failed: " + e.message);
+    return false;
+  }
+}
+
+// ─── LOGIN ──────────────────────────────────────────────
+async function getToken() {
+  try {
+    const accounts = msalInstance.getAllAccounts();
+
+    const request = {
+      scopes: SCOPES
+    };
+
     if (accounts.length > 0) {
-      const res = await msalInstance.acquireTokenSilent({ ...req, account: accounts[0] });
+      const res = await msalInstance.acquireTokenSilent({
+        ...request,
+        account: accounts[0]
+      });
       return res.accessToken;
     }
-    const res = await msalInstance.loginPopup(req);
+
+    const res = await msalInstance.loginPopup(request);
     return res.accessToken;
-  } catch(e) {
-    console.error(e);
-    try {
-      const res = await msalInstance.loginPopup(req);
-      return res.accessToken;
-    } catch(e2) { alert('Sign-in failed: ' + e2.message); return null; }
+
+  } catch (e) {
+    console.error("LOGIN ERROR:", e);
+    alert("Login failed: " + (e.message || e));
+    return null;
   }
 }
 
-// ─── MODAL ────────────────────────────────────────────────────────────────────
-function openModal() {
-  document.getElementById('client-id-input').value = CLIENT_ID;
-  document.getElementById('redirect-uri-input').value = REDIRECT_URI;
-  document.getElementById('config-modal').style.display = 'flex';
-}
-function closeModal() { document.getElementById('config-modal').style.display = 'none'; }
+// ─── CONNECT FLOW ───────────────────────────────────────
+async function handleConnectClick() {
+  log("Connect clicked");
 
-function saveConfig() {
-  const cid = document.getElementById('client-id-input').value.trim();
-  const ruri = document.getElementById('redirect-uri-input').value.trim();
-  if (!cid) { alert('Please enter a Client ID'); return; }
-  CLIENT_ID = cid; REDIRECT_URI = ruri;
-  localStorage.setItem('cb_client_id', CLIENT_ID);
-  localStorage.setItem('cb_redirect_uri', REDIRECT_URI);
-  closeModal();
-  startSignIn();
-}
+  if (!CLIENT_ID) {
+    openModal();
+    return;
+  }
 
-// ─── CONNECT ──────────────────────────────────────────────────────────────────
-function handleConnectClick() {
-  if (accessToken) { signOut(); return; }
-  if (!CLIENT_ID) { openModal(); return; }
-  startSignIn();
-}
+  if (!initMsal()) return;
 
-async function startSignIn() {
-  if (!initMsal()) { openModal(); return; }
-  const btn = document.getElementById('connect-btn');
-  btn.textContent = 'Connecting…';
-  btn.disabled = true;
-  accessToken = await getToken();
-  if (accessToken) {
-    btn.className = 'connect-btn connected';
-    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Connected';
-    btn.disabled = false;
+  try {
+    document.getElementById('connect-btn').innerText = "Connecting...";
+
+    accessToken = await getToken();
+
+    if (!accessToken) {
+      log("No token received");
+      return;
+    }
+
+    document.getElementById('connect-btn').innerText = "Connected";
+    document.getElementById('connect-btn').classList.add("connected");
+
+    log("Connected successfully");
+
     showBrowser();
     loadFolder(null);
-  } else {
-    btn.textContent = 'Connect OneDrive';
-    btn.disabled = false;
+
+  } catch (e) {
+    console.error(e);
+    alert("Connection failed: " + e.message);
   }
 }
 
-function signOut() {
-  if (confirm('Disconnect OneDrive?')) {
-    if (msalInstance) msalInstance.logout();
-    accessToken = null;
-    document.getElementById('connect-btn').className = 'connect-btn';
-    document.getElementById('connect-btn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Connect OneDrive';
-    hideBrowser();
-  }
-}
-
-// ─── GRAPH API ────────────────────────────────────────────────────────────────
+// ─── GRAPH API ──────────────────────────────────────────
 async function graphGet(url) {
-  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${accessToken}`
+    }
+  });
+
+  if (!res.ok) {
+    throw new Error(await res.text());
+  }
+
+  return res.json();
 }
 
-async function loadFolder(itemId) {
-  showLoading();
+// ─── LOAD FILES ─────────────────────────────────────────
+async function loadFolder(id) {
   try {
-    const url = itemId
-      ? `${GRAPH}/me/drive/items/${itemId}/children?$top=200&$orderby=name`
-      : `${GRAPH}/me/drive/root/children?$top=200&$orderby=name`;
+    const url = id
+      ? `${GRAPH}/me/drive/items/${id}/children`
+      : `${GRAPH}/me/drive/root/children`;
+
     const data = await graphGet(url);
-    currentFiles = data.value || [];
-    filteredFiles = currentFiles;
-    renderFiles();
-    updateBreadcrumb();
-    // build playlist from audio files in current folder
-    playlist = currentFiles.filter(f => isAudio(f));
-  } catch(e) {
-    showError('Failed to load folder: ' + e.message);
+
+    const files = data.value || [];
+    playlist = files.filter(f => isAudio(f));
+
+    renderFiles(files);
+
+    log("Files loaded", files.length);
+
+  } catch (e) {
+    console.error(e);
+    alert("Failed to load files: " + e.message);
   }
 }
 
+// ─── CHECK AUDIO ────────────────────────────────────────
 function isAudio(item) {
-  if (!item.name) return false;
+  if (!item?.name) return false;
   const ext = item.name.split('.').pop().toLowerCase();
   return AUDIO_EXTS.includes(ext);
 }
 
+// ─── STREAM FILE ────────────────────────────────────────
 async function streamFile(item) {
-  try {
-    const data = await graphGet(`${GRAPH}/me/drive/items/${item.id}?select=@microsoft.graph.downloadUrl`);
-    const url = data['@microsoft.graph.downloadUrl'];
-    if (!url) throw new Error('No download URL');
-    return url;
-  } catch(e) { alert('Could not get stream URL: ' + e.message); return null; }
+  const data = await graphGet(
+    `${GRAPH}/me/drive/items/${item.id}?select=@microsoft.graph.downloadUrl`
+  );
+
+  return data['@microsoft.graph.downloadUrl'];
 }
 
-// ─── RENDER ───────────────────────────────────────────────────────────────────
-function showBrowser() {
-  document.getElementById('hero-view').style.display = 'none';
-  document.getElementById('browser-view').style.display = 'flex';
-}
-function hideBrowser() {
-  document.getElementById('hero-view').style.display = 'flex';
-  document.getElementById('browser-view').style.display = 'none';
+// ─── PLAY AUDIO ─────────────────────────────────────────
+async function playAudio(index) {
+  const item = playlist[index];
+  if (!item) return;
+
+  currentIndex = index;
+
+  const url = await streamFile(item);
+
+  audio.src = url;
+  audio.play();
+
+  log("Playing:", item.name);
 }
 
-function showLoading() {
-  document.getElementById('file-list').innerHTML = `<div class="state-msg"><div class="spinner"></div><span>Loading files…</span></div>`;
-}
-function showError(msg) {
-  document.getElementById('file-list').innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${msg}</span></div>`;
-}
+// ─── SIMPLE UI RENDER ───────────────────────────────────
+function renderFiles(files) {
+  const list = document.getElementById("file-list");
 
-function renderFiles() {
-  const list = document.getElementById('file-list');
-  if (!filteredFiles.length) {
-    list.innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span>No audio files found here</span></div>`;
+  if (!files.length) {
+    list.innerHTML = "<p>No files found</p>";
     return;
   }
 
-  // Sort: folders first, then audio files, then rest
-  const sorted = [...filteredFiles].sort((a, b) => {
-    const aF = !!a.folder, bF = !!b.folder;
-    if (aF !== bF) return aF ? -1 : 1;
-    const aA = isAudio(a), bA = isAudio(b);
-    if (aA !== bA) return aA ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-
-  let audioIdx = 0;
-  list.innerHTML = sorted.map((item, i) => {
-    const isFolder = !!item.folder;
-    const audio = isAudio(item);
-    const idx = audio ? audioIdx++ : -1;
-    const size = item.size ? formatSize(item.size) : '';
-    const isActive = playlist[currentIndex]?.id === item.id;
-
-    return `
-      <div class="file-row ${isActive ? 'playing' : ''}" onclick="${isFolder ? `openFolder('${item.id}','${escapeJs(item.name)}')` : audio ? `playAudio(${idx})` : ''}">
-        <div class="track-num">${audio ? (idx + 1) : isFolder ? '—' : '·'}</div>
-        <div class="track-thumb ${isFolder ? 'folder' : ''}">
-          ${isFolder
-            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
-            : audio
-              ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`
-              : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/></svg>`
-          }
-        </div>
-        <div class="track-info">
-          <div class="track-name">${item.name}</div>
-          <div class="track-artist">${isFolder ? `${item.folder.childCount || 0} items` : audio ? 'Audio file' : 'File'}</div>
-        </div>
-        <div class="track-size">${size}</div>
-        <div class="track-dur">—</div>
-        <button class="play-icon-btn" onclick="event.stopPropagation(); ${isFolder ? `openFolder('${item.id}','${escapeJs(item.name)}')` : audio ? `playAudio(${idx})` : ''}" title="${isFolder ? 'Open' : audio ? 'Play' : 'View'}">
-          ${isFolder
-            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`
-            : `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
-          }
-        </button>
-      </div>
-    `;
-  }).join('');
-
-  document.getElementById('list-label').textContent = `${sorted.length} items (${playlist.length} tracks)`;
+  list.innerHTML = files.map((f, i) => `
+    <div onclick="${isAudio(f) ? `playAudio(${i})` : ''}"
+         style="padding:10px;cursor:pointer">
+      ${f.name}
+    </div>
+  `).join("");
 }
 
-function updateBreadcrumb() {
-  const bc = document.getElementById('breadcrumb');
-  bc.innerHTML = breadcrumbs.map((b, i) =>
-    i < breadcrumbs.length - 1
-      ? `<span class="breadcrumb-item" onclick="jumpBreadcrumb(${i})">${b.name}</span><span class="breadcrumb-sep">/</span>`
-      : `<span class="breadcrumb-item" style="color:var(--text)">${b.name}</span>`
-  ).join('');
-  document.getElementById('page-title').textContent = breadcrumbs[breadcrumbs.length - 1].name;
+// ─── UI HELPERS ─────────────────────────────────────────
+function showBrowser() {
+  document.getElementById("hero-view").style.display = "none";
+  document.getElementById("browser-view").style.display = "flex";
 }
 
-function openFolder(id, name) {
-  breadcrumbs.push({ name, id });
-  loadFolder(id);
+// ─── MODAL (simple) ─────────────────────────────────────
+function openModal() {
+  document.getElementById("config-modal").style.display = "flex";
 }
-function jumpBreadcrumb(idx) {
-  breadcrumbs = breadcrumbs.slice(0, idx + 1);
-  loadFolder(breadcrumbs[idx].id);
+function closeModal() {
+  document.getElementById("config-modal").style.display = "none";
 }
-function navigateToRoot() {
-  breadcrumbs = [{ name: 'My Music', id: null }];
-  if (accessToken) loadFolder(null);
+function saveConfig() {
+  CLIENT_ID = document.getElementById("client-id-input").value;
+  REDIRECT_URI = document.getElementById("redirect-uri-input").value;
+
+  localStorage.setItem("cb_client_id", CLIENT_ID);
+  localStorage.setItem("cb_redirect_uri", REDIRECT_URI);
+
+  closeModal();
 }
 
-function filterFiles() {
-  const q = document.getElementById('search-input').value.toLowerCase();
-  filteredFiles = q ? currentFiles.filter(f => f.name.toLowerCase().includes(q)) : currentFiles;
-  renderFiles();
-}
-
-// ─── PLAYBACK ─────────────────────────────────────────────────────────────────
-async function playAudio(idx) {
-  currentIndex = idx;
-  const item = playlist[idx];
-  if (!item) return;
-  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
-  document.getElementById('player-artist').textContent = 'OneDrive';
-  renderFiles(); // refresh highlight
-  const url = await streamFile(item);
-  if (!url) return;
-  audio.src = url;
-  audio.volume = muted ? 0 : volume;
-  audio.play();
-  isPlaying = true;
-  updatePlayBtn();
-}
-
-function togglePlay() {
-  if (!audio.src) return;
-  if (isPlaying) { audio.pause(); isPlaying = false; }
-  else { audio.play(); isPlaying = true; }
-  updatePlayBtn();
-}
-function updatePlayBtn() {
-  document.getElementById('play-icon').outerHTML = isPlaying
-    ? `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
-    : `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
-}
-
-function nextTrack() {
-  if (!playlist.length) return;
-  let next = shuffle
-    ? Math.floor(Math.random() * playlist.length)
-    : (currentIndex + 1) % playlist.length;
-  playAudio(next);
-}
-function prevTrack() {
-  if (!playlist.length) return;
-  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
-  let prev = (currentIndex - 1 + playlist.length) % playlist.length;
-  playAudio(prev);
-}
-
-function toggleShuffle() {
-  shuffle = !shuffle;
-  document.getElementById('shuffle-btn').classList.toggle('active', shuffle);
-}
-function toggleRepeat() {
-  repeat = repeat === false ? 'all' : repeat === 'all' ? 'one' : false;
-  const btn = document.getElementById('repeat-btn');
-  btn.classList.toggle('active', repeat !== false);
-}
-
-audio.addEventListener('ended', () => {
-  if (repeat === 'one') { audio.currentTime = 0; audio.play(); }
-  else nextTrack();
-});
-
-audio.addEventListener('timeupdate', () => {
-  if (!audio.duration) return;
-  const pct = (audio.currentTime / audio.duration) * 100;
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('current-time').textContent = formatTime(audio.currentTime);
-  document.getElementById('total-time').textContent = formatTime(audio.duration);
-});
-
-function seek(e) {
-  const bar = document.getElementById('progress-bar');
-  const pct = e.offsetX / bar.offsetWidth;
-  audio.currentTime = pct * audio.duration;
-}
-
-function setVolume(e) {
-  const s = document.getElementById('vol-slider');
-  volume = Math.max(0, Math.min(1, e.offsetX / s.offsetWidth));
-  audio.volume = volume;
-  muted = false;
-  document.getElementById('vol-fill').style.width = (volume * 100) + '%';
-}
-function toggleMute() {
-  muted = !muted;
-  audio.volume = muted ? 0 : volume;
-}
-
-// ─── HELPERS ──────────────────────────────────────────────────────────────────
-function formatTime(s) {
-  if (isNaN(s)) return '0:00';
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}:${sec.toString().padStart(2, '0')}`;
-}
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
-}
-function escapeJs(str) { return str.replace(/'/g, "\\'").replace(/"/g, '\\"'); }
-
-// ─── AUTO-INIT ────────────────────────────────────────────────────────────────
-window.addEventListener('load', async () => {
-  if (CLIENT_ID) {
-    if (initMsal()) {
-      // check if already signed in
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        try {
-          const res = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
-          accessToken = res.accessToken;
-          document.getElementById('connect-btn').className = 'connect-btn connected';
-          document.getElementById('connect-btn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Connected';
-          showBrowser();
-          loadFolder(null);
-        } catch(e) { /* silent fail, user will click connect */ }
-      }
-    }
-  }
+// ─── INIT DEBUG ─────────────────────────────────────────
+window.addEventListener("load", () => {
+  log("App loaded");
 });
 </script>
 </body>
