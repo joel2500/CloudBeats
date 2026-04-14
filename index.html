@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>CloudBeats – Your OneDrive Music Player</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-msal-browser/3.10.0/msal-browser.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface2: #1a1a24;
+      --surface3: #22222f;
+      --accent: #c8ff00;
+      --accent2: #7c3aed;
+      --text: #f0f0f5;
+      --muted: #6b6b80;
+      --border: #2a2a38;
+      --player-h: 90px;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      font-family: 'DM Mono', monospace;
+      background: var(--bg);
+      color: var(--text);
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── NOISE OVERLAY ── */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.4;
+    }
+
+    /* ── LAYOUT ── */
+    .shell { display: flex; height: calc(100vh - var(--player-h)); overflow: hidden; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 240px;
+      min-width: 240px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .logo {
+      padding: 28px 24px 20px;
+      font-family: 'Syne', sans-serif;
+      font-size: 20px;
+      font-weight: 800;
+      letter-spacing: -0.5px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .logo-dot { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; }
+    .logo span { color: var(--accent); }
+
+    .nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
+    .nav-label { font-size: 10px; letter-spacing: 2px; color: var(--muted); padding: 8px 12px 6px; text-transform: uppercase; }
+
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 8px;
+      cursor: pointer; font-size: 13px; color: var(--muted);
+      transition: all 0.15s; margin-bottom: 2px;
+    }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--surface3); color: var(--accent); }
+    .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
+
+    .sidebar-footer {
+      padding: 16px;
+      border-top: 1px solid var(--border);
+    }
+    .connect-btn {
+      width: 100%;
+      background: var(--accent);
+      color: #0a0a0f;
+      border: none;
+      border-radius: 8px;
+      padding: 11px;
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+    }
+    .connect-btn:hover { background: #d4ff1a; transform: translateY(-1px); }
+    .connect-btn.connected { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
+    .connect-btn.connected:hover { background: #2a1a1a; color: #ff6b6b; }
+
+    /* ── MAIN CONTENT ── */
+    .main {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .topbar {
+      padding: 24px 32px 0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .page-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      letter-spacing: -1px;
+    }
+
+    .search-bar {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 14px;
+      width: 240px;
+    }
+    .search-bar input {
+      background: none; border: none; outline: none;
+      color: var(--text); font-family: 'DM Mono', monospace;
+      font-size: 13px; width: 100%;
+    }
+    .search-bar input::placeholder { color: var(--muted); }
+    .search-bar svg { color: var(--muted); width: 15px; height: 15px; flex-shrink: 0; }
+
+    /* ── HERO (when not signed in) ── */
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      text-align: center;
+      gap: 20px;
+    }
+    .hero-icon {
+      width: 80px; height: 80px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .hero-icon svg { width: 36px; height: 36px; color: var(--accent); }
+    .hero h2 { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; }
+    .hero p { color: var(--muted); font-size: 13px; max-width: 360px; line-height: 1.7; }
+    .hero-cta {
+      background: var(--accent); color: #0a0a0f;
+      border: none; border-radius: 8px;
+      padding: 12px 28px;
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .hero-cta:hover { background: #d4ff1a; transform: translateY(-2px); }
+
+    /* ── FOLDER BREADCRUMB ── */
+    .breadcrumb {
+      padding: 20px 32px 0;
+      display: flex; align-items: center; gap: 6px;
+      font-size: 12px; color: var(--muted);
+      flex-shrink: 0;
+    }
+    .breadcrumb-item { cursor: pointer; transition: color 0.15s; }
+    .breadcrumb-item:hover { color: var(--accent); }
+    .breadcrumb-sep { color: var(--border); }
+
+    /* ── FILE GRID / LIST ── */
+    .content-area { padding: 20px 32px 32px; flex: 1; }
+
+    .section-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px; font-weight: 700;
+      letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
+    }
+    .view-toggle { display: flex; gap: 4px; }
+    .view-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 6px; padding: 5px 8px;
+      color: var(--muted); cursor: pointer; transition: all 0.15s;
+    }
+    .view-btn.active, .view-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .view-btn svg { width: 14px; height: 14px; display: block; }
+
+    /* List view */
+    .file-list { display: flex; flex-direction: column; gap: 2px; }
+    .file-row {
+      display: grid;
+      grid-template-columns: 40px 40px 1fr 120px 80px 40px;
+      align-items: center; gap: 12px;
+      padding: 10px 12px; border-radius: 8px;
+      cursor: pointer; transition: background 0.15s;
+      border: 1px solid transparent;
+    }
+    .file-row:hover { background: var(--surface2); }
+    .file-row.playing { background: var(--surface2); border-color: var(--border); }
+    .file-row.playing .track-name { color: var(--accent); }
+
+    .track-num { font-size: 12px; color: var(--muted); text-align: center; }
+    .track-thumb {
+      width: 40px; height: 40px; border-radius: 6px;
+      background: var(--surface3);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; position: relative; overflow: hidden;
+    }
+    .track-thumb svg { width: 18px; height: 18px; color: var(--muted); }
+    .track-thumb.folder { background: linear-gradient(135deg, #1a1a2e, #2a1a3e); }
+    .track-thumb.folder svg { color: var(--accent2); }
+
+    .track-info { min-width: 0; }
+    .track-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-artist { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .track-size { font-size: 12px; color: var(--muted); }
+    .track-dur { font-size: 12px; color: var(--muted); text-align: right; }
+
+    .play-icon-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 6px; border-radius: 6px;
+      transition: all 0.15s; display: flex;
+    }
+    .play-icon-btn:hover { color: var(--accent); background: var(--surface3); }
+    .play-icon-btn svg { width: 16px; height: 16px; }
+
+    /* Loading / empty states */
+    .state-msg {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 60px 20px; gap: 12px;
+      color: var(--muted); font-size: 13px; text-align: center;
+    }
+    .state-msg svg { width: 36px; height: 36px; opacity: 0.4; }
+    .spinner {
+      width: 28px; height: 28px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── PLAYER BAR ── */
+    .player {
+      height: var(--player-h);
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center;
+      padding: 0 24px; gap: 20px;
+      flex-shrink: 0;
+    }
+
+    .player-track { display: flex; align-items: center; gap: 12px; width: 260px; min-width: 0; }
+    .player-art {
+      width: 52px; height: 52px; border-radius: 8px;
+      background: var(--surface3);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .player-art svg { width: 22px; height: 22px; color: var(--muted); }
+    .player-info { min-width: 0; }
+    .player-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .player-artist { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+    .player-controls { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .control-btns { display: flex; align-items: center; gap: 8px; }
+    .ctrl-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); padding: 8px; border-radius: 50%;
+      transition: all 0.15s; display: flex;
+    }
+    .ctrl-btn:hover { color: var(--text); }
+    .ctrl-btn svg { width: 18px; height: 18px; }
+    .ctrl-btn.main-play {
+      background: var(--accent); color: #0a0a0f;
+      padding: 10px; width: 42px; height: 42px;
+      align-items: center; justify-content: center;
+    }
+    .ctrl-btn.main-play:hover { background: #d4ff1a; transform: scale(1.05); }
+    .ctrl-btn.active { color: var(--accent); }
+
+    .progress-row { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 500px; }
+    .time-label { font-size: 11px; color: var(--muted); width: 36px; flex-shrink: 0; }
+    .time-label:last-child { text-align: right; }
+    .progress-bar {
+      flex: 1; height: 4px; background: var(--surface3);
+      border-radius: 2px; cursor: pointer; position: relative;
+    }
+    .progress-fill {
+      height: 100%; background: var(--accent); border-radius: 2px;
+      transition: width 0.3s linear; position: relative;
+    }
+    .progress-fill::after {
+      content: ''; position: absolute; right: -5px; top: -4px;
+      width: 12px; height: 12px; background: var(--accent);
+      border-radius: 50%; opacity: 0; transition: opacity 0.15s;
+    }
+    .progress-bar:hover .progress-fill::after { opacity: 1; }
+
+    .player-right { display: flex; align-items: center; gap: 8px; width: 180px; justify-content: flex-end; }
+    .volume-row { display: flex; align-items: center; gap: 8px; }
+    .volume-slider {
+      width: 80px; height: 4px; background: var(--surface3);
+      border-radius: 2px; cursor: pointer; position: relative;
+    }
+    .volume-fill { height: 100%; background: var(--muted); border-radius: 2px; }
+
+    audio { display: none; }
+
+    /* scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    /* Config modal */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000; backdrop-filter: blur(4px);
+    }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px; padding: 32px;
+      width: 480px; max-width: 90vw;
+    }
+    .modal h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .modal p { color: var(--muted); font-size: 13px; line-height: 1.7; margin-bottom: 20px; }
+    .modal label { display: block; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .modal input {
+      width: 100%; background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 14px; color: var(--text);
+      font-family: 'DM Mono', monospace; font-size: 13px; outline: none;
+      margin-bottom: 16px; transition: border-color 0.15s;
+    }
+    .modal input:focus { border-color: var(--accent); }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+    .btn-ghost {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; padding: 9px 18px;
+      color: var(--muted); cursor: pointer; font-family: 'DM Mono', monospace;
+      font-size: 13px; transition: all 0.15s;
+    }
+    .btn-ghost:hover { border-color: var(--text); color: var(--text); }
+    .btn-accent {
+      background: var(--accent); color: #0a0a0f;
+      border: none; border-radius: 8px; padding: 9px 18px;
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-accent:hover { background: #d4ff1a; }
+    .step-list { list-style: none; counter-reset: steps; }
+    .step-list li {
+      counter-increment: steps;
+      display: flex; gap: 12px; align-items: flex-start;
+      margin-bottom: 10px; font-size: 12px; color: var(--muted); line-height: 1.6;
+    }
+    .step-list li::before {
+      content: counter(steps);
+      background: var(--surface3); color: var(--accent);
+      border-radius: 50%; width: 20px; height: 20px; min-width: 20px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 11px; font-family: 'Syne', sans-serif; font-weight: 700;
+    }
+    .step-list a { color: var(--accent); text-decoration: none; }
+    .step-list a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+
+<audio id="audio-player"></audio>
+
+<!-- Config Modal -->
+<div class="modal-overlay" id="config-modal" style="display:none">
+  <div class="modal">
+    <h2>Connect OneDrive</h2>
+    <p>Enter your Azure App Client ID to connect your OneDrive music library. This is free — no credit card needed.</p>
+
+    <ol class="step-list">
+      <li>Go to <a href="https://portal.azure.com" target="_blank">portal.azure.com</a> → App registrations → New registration</li>
+      <li>Name it anything, set type to <strong style="color:var(--text)">Single Page App (SPA)</strong>, redirect URI = this page's URL</li>
+      <li>After creating, copy the <strong style="color:var(--text)">Application (client) ID</strong></li>
+      <li>Go to API Permissions → Add → Microsoft Graph → Delegated → add <code style="color:var(--accent)">Files.Read</code> &amp; <code style="color:var(--accent)">User.Read</code></li>
+    </ol>
+
+    <label>Client ID</label>
+    <input type="text" id="client-id-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
+
+    <label>Redirect URI <span style="color:var(--muted);font-size:10px">(this page's URL)</span></label>
+    <input type="text" id="redirect-uri-input" />
+
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="closeModal()">Cancel</button>
+      <button class="btn-accent" onclick="saveConfig()">Save &amp; Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div class="shell">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-dot"></div>
+      Cloud<span>Beats</span>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Library</div>
+      <div class="nav-item active" onclick="navigateToRoot()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
+        All Music
+      </div>
+      <div class="nav-item" onclick="alert('Coming soon: Playlists!')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+        Playlists
+      </div>
+      <div class="nav-item" onclick="alert('Coming soon: Recents!')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        Recent
+      </div>
+      <div class="nav-item" onclick="alert('Coming soon: Favorites!')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        Favorites
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <button class="connect-btn" id="connect-btn" onclick="handleConnectClick()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        Connect OneDrive
+      </button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main" id="main-area">
+    <!-- Hero (default) -->
+    <div class="hero" id="hero-view">
+      <div class="hero-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      <h2>Your music, your cloud.</h2>
+      <p>Connect your OneDrive to start streaming your music library directly in the browser — no downloads, no subscriptions.</p>
+      <button class="hero-cta" onclick="handleConnectClick()">Connect OneDrive →</button>
+    </div>
+
+    <!-- File browser (shown after sign-in) -->
+    <div id="browser-view" style="display:none; display:flex; flex-direction:column; height:100%; display:none">
+      <div class="topbar">
+        <div class="page-title" id="page-title">My Music</div>
+        <div class="search-bar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Search files..." id="search-input" oninput="filterFiles()" />
+        </div>
+      </div>
+
+      <div class="breadcrumb" id="breadcrumb"></div>
+
+      <div class="content-area">
+        <div class="section-header">
+          <span class="section-title" id="list-label">Files</span>
+          <div class="view-toggle">
+            <button class="view-btn active" title="List view">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="file-list" id="file-list"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- PLAYER BAR -->
+<div class="player">
+  <div class="player-track">
+    <div class="player-art" id="player-art">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    </div>
+    <div class="player-info">
+      <div class="player-name" id="player-name">No track selected</div>
+      <div class="player-artist" id="player-artist">—</div>
+    </div>
+  </div>
+
+  <div class="player-controls">
+    <div class="control-btns">
+      <button class="ctrl-btn" id="shuffle-btn" onclick="toggleShuffle()" title="Shuffle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+      </button>
+      <button class="ctrl-btn" onclick="prevTrack()" title="Previous">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
+      </button>
+      <button class="ctrl-btn main-play" id="play-btn" onclick="togglePlay()" title="Play/Pause">
+        <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+      </button>
+      <button class="ctrl-btn" onclick="nextTrack()" title="Next">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
+      </button>
+      <button class="ctrl-btn" id="repeat-btn" onclick="toggleRepeat()" title="Repeat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/></svg>
+      </button>
+    </div>
+    <div class="progress-row">
+      <span class="time-label" id="current-time">0:00</span>
+      <div class="progress-bar" onclick="seek(event)" id="progress-bar">
+        <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+      </div>
+      <span class="time-label" id="total-time">0:00</span>
+    </div>
+  </div>
+
+  <div class="player-right">
+    <div class="volume-row">
+      <button class="ctrl-btn" onclick="toggleMute()" style="padding:4px">
+        <svg id="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+      </button>
+      <div class="volume-slider" onclick="setVolume(event)" id="vol-slider">
+        <div class="volume-fill" id="vol-fill" style="width:80%"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+let CLIENT_ID = localStorage.getItem('cb_client_id') || '';
+let REDIRECT_URI = localStorage.getItem('cb_redirect_uri') || window.location.href.split('?')[0].split('#')[0];
+const SCOPES = ['Files.Read', 'User.Read'];
+const GRAPH = 'https://graph.microsoft.com/v1.0';
+const AUDIO_EXTS = ['mp3','m4a','flac','wav','ogg','aac','opus','wma'];
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let msalInstance = null;
+let accessToken = null;
+let currentFiles = [];
+let filteredFiles = [];
+let playlist = [];      // only audio files
+let currentIndex = -1;
+let isPlaying = false;
+let shuffle = false;
+let repeat = false; // false | 'one' | 'all'
+let volume = 0.8;
+let muted = false;
+let breadcrumbs = [{ name: 'My Music', id: null }];
+
+const audio = document.getElementById('audio-player');
+
+// ─── MSAL INIT ────────────────────────────────────────────────────────────────
+function initMsal() {
+  if (!CLIENT_ID) return false;
+  try {
+    msalInstance = new msal.PublicClientApplication({
+      auth: { clientId: CLIENT_ID, redirectUri: REDIRECT_URI },
+      cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false }
+    });
+    return true;
+  } catch(e) { console.error(e); return false; }
+}
+
+async function getToken() {
+  if (!msalInstance) return null;
+  const accounts = msalInstance.getAllAccounts();
+  const req = { scopes: SCOPES };
+  try {
+    if (accounts.length > 0) {
+      const res = await msalInstance.acquireTokenSilent({ ...req, account: accounts[0] });
+      return res.accessToken;
+    }
+    const res = await msalInstance.loginPopup(req);
+    return res.accessToken;
+  } catch(e) {
+    console.error(e);
+    try {
+      const res = await msalInstance.loginPopup(req);
+      return res.accessToken;
+    } catch(e2) { alert('Sign-in failed: ' + e2.message); return null; }
+  }
+}
+
+// ─── MODAL ────────────────────────────────────────────────────────────────────
+function openModal() {
+  document.getElementById('client-id-input').value = CLIENT_ID;
+  document.getElementById('redirect-uri-input').value = REDIRECT_URI;
+  document.getElementById('config-modal').style.display = 'flex';
+}
+function closeModal() { document.getElementById('config-modal').style.display = 'none'; }
+
+function saveConfig() {
+  const cid = document.getElementById('client-id-input').value.trim();
+  const ruri = document.getElementById('redirect-uri-input').value.trim();
+  if (!cid) { alert('Please enter a Client ID'); return; }
+  CLIENT_ID = cid; REDIRECT_URI = ruri;
+  localStorage.setItem('cb_client_id', CLIENT_ID);
+  localStorage.setItem('cb_redirect_uri', REDIRECT_URI);
+  closeModal();
+  startSignIn();
+}
+
+// ─── CONNECT ──────────────────────────────────────────────────────────────────
+function handleConnectClick() {
+  if (accessToken) { signOut(); return; }
+  if (!CLIENT_ID) { openModal(); return; }
+  startSignIn();
+}
+
+async function startSignIn() {
+  if (!initMsal()) { openModal(); return; }
+  const btn = document.getElementById('connect-btn');
+  btn.textContent = 'Connecting…';
+  btn.disabled = true;
+  accessToken = await getToken();
+  if (accessToken) {
+    btn.className = 'connect-btn connected';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Connected';
+    btn.disabled = false;
+    showBrowser();
+    loadFolder(null);
+  } else {
+    btn.textContent = 'Connect OneDrive';
+    btn.disabled = false;
+  }
+}
+
+function signOut() {
+  if (confirm('Disconnect OneDrive?')) {
+    if (msalInstance) msalInstance.logout();
+    accessToken = null;
+    document.getElementById('connect-btn').className = 'connect-btn';
+    document.getElementById('connect-btn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Connect OneDrive';
+    hideBrowser();
+  }
+}
+
+// ─── GRAPH API ────────────────────────────────────────────────────────────────
+async function graphGet(url) {
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadFolder(itemId) {
+  showLoading();
+  try {
+    const url = itemId
+      ? `${GRAPH}/me/drive/items/${itemId}/children?$top=200&$orderby=name`
+      : `${GRAPH}/me/drive/root/children?$top=200&$orderby=name`;
+    const data = await graphGet(url);
+    currentFiles = data.value || [];
+    filteredFiles = currentFiles;
+    renderFiles();
+    updateBreadcrumb();
+    // build playlist from audio files in current folder
+    playlist = currentFiles.filter(f => isAudio(f));
+  } catch(e) {
+    showError('Failed to load folder: ' + e.message);
+  }
+}
+
+function isAudio(item) {
+  if (!item.name) return false;
+  const ext = item.name.split('.').pop().toLowerCase();
+  return AUDIO_EXTS.includes(ext);
+}
+
+async function streamFile(item) {
+  try {
+    const data = await graphGet(`${GRAPH}/me/drive/items/${item.id}?select=@microsoft.graph.downloadUrl`);
+    const url = data['@microsoft.graph.downloadUrl'];
+    if (!url) throw new Error('No download URL');
+    return url;
+  } catch(e) { alert('Could not get stream URL: ' + e.message); return null; }
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function showBrowser() {
+  document.getElementById('hero-view').style.display = 'none';
+  document.getElementById('browser-view').style.display = 'flex';
+}
+function hideBrowser() {
+  document.getElementById('hero-view').style.display = 'flex';
+  document.getElementById('browser-view').style.display = 'none';
+}
+
+function showLoading() {
+  document.getElementById('file-list').innerHTML = `<div class="state-msg"><div class="spinner"></div><span>Loading files…</span></div>`;
+}
+function showError(msg) {
+  document.getElementById('file-list').innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${msg}</span></div>`;
+}
+
+function renderFiles() {
+  const list = document.getElementById('file-list');
+  if (!filteredFiles.length) {
+    list.innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/><polyline points="13 2 13 9 20 9"/></svg><span>No audio files found here</span></div>`;
+    return;
+  }
+
+  // Sort: folders first, then audio files, then rest
+  const sorted = [...filteredFiles].sort((a, b) => {
+    const aF = !!a.folder, bF = !!b.folder;
+    if (aF !== bF) return aF ? -1 : 1;
+    const aA = isAudio(a), bA = isAudio(b);
+    if (aA !== bA) return aA ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+
+  let audioIdx = 0;
+  list.innerHTML = sorted.map((item, i) => {
+    const isFolder = !!item.folder;
+    const audio = isAudio(item);
+    const idx = audio ? audioIdx++ : -1;
+    const size = item.size ? formatSize(item.size) : '';
+    const isActive = playlist[currentIndex]?.id === item.id;
+
+    return `
+      <div class="file-row ${isActive ? 'playing' : ''}" onclick="${isFolder ? `openFolder('${item.id}','${escapeJs(item.name)}')` : audio ? `playAudio(${idx})` : ''}">
+        <div class="track-num">${audio ? (idx + 1) : isFolder ? '—' : '·'}</div>
+        <div class="track-thumb ${isFolder ? 'folder' : ''}">
+          ${isFolder
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
+            : audio
+              ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`
+              : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z"/></svg>`
+          }
+        </div>
+        <div class="track-info">
+          <div class="track-name">${item.name}</div>
+          <div class="track-artist">${isFolder ? `${item.folder.childCount || 0} items` : audio ? 'Audio file' : 'File'}</div>
+        </div>
+        <div class="track-size">${size}</div>
+        <div class="track-dur">—</div>
+        <button class="play-icon-btn" onclick="event.stopPropagation(); ${isFolder ? `openFolder('${item.id}','${escapeJs(item.name)}')` : audio ? `playAudio(${idx})` : ''}" title="${isFolder ? 'Open' : audio ? 'Play' : 'View'}">
+          ${isFolder
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`
+            : `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`
+          }
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('list-label').textContent = `${sorted.length} items (${playlist.length} tracks)`;
+}
+
+function updateBreadcrumb() {
+  const bc = document.getElementById('breadcrumb');
+  bc.innerHTML = breadcrumbs.map((b, i) =>
+    i < breadcrumbs.length - 1
+      ? `<span class="breadcrumb-item" onclick="jumpBreadcrumb(${i})">${b.name}</span><span class="breadcrumb-sep">/</span>`
+      : `<span class="breadcrumb-item" style="color:var(--text)">${b.name}</span>`
+  ).join('');
+  document.getElementById('page-title').textContent = breadcrumbs[breadcrumbs.length - 1].name;
+}
+
+function openFolder(id, name) {
+  breadcrumbs.push({ name, id });
+  loadFolder(id);
+}
+function jumpBreadcrumb(idx) {
+  breadcrumbs = breadcrumbs.slice(0, idx + 1);
+  loadFolder(breadcrumbs[idx].id);
+}
+function navigateToRoot() {
+  breadcrumbs = [{ name: 'My Music', id: null }];
+  if (accessToken) loadFolder(null);
+}
+
+function filterFiles() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  filteredFiles = q ? currentFiles.filter(f => f.name.toLowerCase().includes(q)) : currentFiles;
+  renderFiles();
+}
+
+// ─── PLAYBACK ─────────────────────────────────────────────────────────────────
+async function playAudio(idx) {
+  currentIndex = idx;
+  const item = playlist[idx];
+  if (!item) return;
+  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-artist').textContent = 'OneDrive';
+  renderFiles(); // refresh highlight
+  const url = await streamFile(item);
+  if (!url) return;
+  audio.src = url;
+  audio.volume = muted ? 0 : volume;
+  audio.play();
+  isPlaying = true;
+  updatePlayBtn();
+}
+
+function togglePlay() {
+  if (!audio.src) return;
+  if (isPlaying) { audio.pause(); isPlaying = false; }
+  else { audio.play(); isPlaying = true; }
+  updatePlayBtn();
+}
+function updatePlayBtn() {
+  document.getElementById('play-icon').outerHTML = isPlaying
+    ? `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+    : `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+}
+
+function nextTrack() {
+  if (!playlist.length) return;
+  let next = shuffle
+    ? Math.floor(Math.random() * playlist.length)
+    : (currentIndex + 1) % playlist.length;
+  playAudio(next);
+}
+function prevTrack() {
+  if (!playlist.length) return;
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+  let prev = (currentIndex - 1 + playlist.length) % playlist.length;
+  playAudio(prev);
+}
+
+function toggleShuffle() {
+  shuffle = !shuffle;
+  document.getElementById('shuffle-btn').classList.toggle('active', shuffle);
+}
+function toggleRepeat() {
+  repeat = repeat === false ? 'all' : repeat === 'all' ? 'one' : false;
+  const btn = document.getElementById('repeat-btn');
+  btn.classList.toggle('active', repeat !== false);
+}
+
+audio.addEventListener('ended', () => {
+  if (repeat === 'one') { audio.currentTime = 0; audio.play(); }
+  else nextTrack();
+});
+
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('current-time').textContent = formatTime(audio.currentTime);
+  document.getElementById('total-time').textContent = formatTime(audio.duration);
+});
+
+function seek(e) {
+  const bar = document.getElementById('progress-bar');
+  const pct = e.offsetX / bar.offsetWidth;
+  audio.currentTime = pct * audio.duration;
+}
+
+function setVolume(e) {
+  const s = document.getElementById('vol-slider');
+  volume = Math.max(0, Math.min(1, e.offsetX / s.offsetWidth));
+  audio.volume = volume;
+  muted = false;
+  document.getElementById('vol-fill').style.width = (volume * 100) + '%';
+}
+function toggleMute() {
+  muted = !muted;
+  audio.volume = muted ? 0 : volume;
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function formatTime(s) {
+  if (isNaN(s)) return '0:00';
+  const m = Math.floor(s / 60);
+  const sec = Math.floor(s % 60);
+  return `${m}:${sec.toString().padStart(2, '0')}`;
+}
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1048576) return (bytes / 1024).toFixed(0) + ' KB';
+  return (bytes / 1048576).toFixed(1) + ' MB';
+}
+function escapeJs(str) { return str.replace(/'/g, "\\'").replace(/"/g, '\\"'); }
+
+// ─── AUTO-INIT ────────────────────────────────────────────────────────────────
+window.addEventListener('load', async () => {
+  if (CLIENT_ID) {
+    if (initMsal()) {
+      // check if already signed in
+      const accounts = msalInstance.getAllAccounts();
+      if (accounts.length > 0) {
+        try {
+          const res = await msalInstance.acquireTokenSilent({ scopes: SCOPES, account: accounts[0] });
+          accessToken = res.accessToken;
+          document.getElementById('connect-btn').className = 'connect-btn connected';
+          document.getElementById('connect-btn').innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Connected';
+          showBrowser();
+          loadFolder(null);
+        } catch(e) { /* silent fail, user will click connect */ }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
