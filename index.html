@@ -546,6 +546,7 @@ function startConnect() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
+    prompt: 'select_account', // <--- Add this to force the account selector and fresh consent
     callback: async (resp) => {
       if (resp.error) { alert('Auth error: ' + resp.error); return; }
       accessToken = resp.access_token;
