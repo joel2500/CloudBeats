@@ -641,20 +641,25 @@ async function playTrack(idx) {
   renderFiles();
 
   try {
-    // 🛑 STOP any previous playback cleanly
     audio.pause();
-    audio.src = '';
 
-    // ✅ Set new stream URL
-    const streamUrl = `https://www.googleapis.com/drive/v3/files/${item.id}?alt=media&access_token=${accessToken}`;
+    const url = `${DRIVE_API}/files/${item.id}?alt=media`;
 
-    audio.src = streamUrl;
-    audio.volume = muted ? 0 : volume;
-
-    // ✅ Wait until audio is ready before playing
-    await new Promise((resolve) => {
-      audio.onloadedmetadata = () => resolve();
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
     });
+
+    if (!res.ok) throw new Error("HTTP " + res.status);
+
+    const blob = await res.blob();
+
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = URL.createObjectURL(blob);
+
+    audio.src = currentBlobUrl;
+    audio.volume = muted ? 0 : volume;
 
     await audio.play();
 
