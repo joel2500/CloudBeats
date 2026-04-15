@@ -333,7 +333,6 @@
 
 <audio id="audio-player"></audio>
 
-<!-- MODAL -->
 <div class="modal-overlay" id="config-modal" style="display:none">
   <div class="modal">
     <div class="modal-logo">
@@ -365,7 +364,6 @@
   </div>
 </div>
 
-<!-- SHELL -->
 <div class="shell">
   <aside class="sidebar">
     <div class="logo">
@@ -402,7 +400,6 @@
   </aside>
 
   <main class="main">
-    <!-- HERO -->
     <div class="hero" id="hero-view">
       <div class="hero-rings">
         <div class="hero-icon-inner">
@@ -414,7 +411,6 @@
       <button class="hero-cta" onclick="handleConnectClick()">Connect Google Drive →</button>
     </div>
 
-    <!-- BROWSER -->
     <div id="browser-view" style="display:none;flex-direction:column;height:100%">
       <div class="topbar">
         <div class="page-title" id="page-title">Songs</div>
@@ -438,7 +434,6 @@
   </main>
 </div>
 
-<!-- PLAYER BAR -->
 <div class="player">
   <div class="player-track">
     <div class="player-art" id="player-art">
@@ -489,6 +484,8 @@
 // ── CONFIG ──────────────────────────────────────────────
 let CLIENT_ID   = localStorage.getItem('cb_gd_clientid') || '';
 let FOLDER_NAME = localStorage.getItem('cb_gd_folder')   || 'Songs';
+// ADD YOUR API KEY HERE:
+const API_KEY   = 'AIzaSyCipDFsvigS0QLtMFSJ8dTdHxs7reUrmKo'; 
 const SCOPES    = 'https://www.googleapis.com/auth/drive.readonly';
 const AUDIO_EXTS= ['mp3','m4a','flac','wav','ogg','aac','opus','wma'];
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
@@ -546,7 +543,7 @@ function startConnect() {
   tokenClient = google.accounts.oauth2.initTokenClient({
     client_id: CLIENT_ID,
     scope: SCOPES,
-    prompt: 'select_account', // <--- Add this to force the account selector and fresh consent
+    prompt: 'consent', // Forces permission checkboxes to appear
     callback: async (resp) => {
       if (resp.error) { alert('Auth error: ' + resp.error); return; }
       accessToken = resp.access_token;
@@ -634,40 +631,43 @@ async function playTrack(idx) {
   const item = playlist[idx];
   if (!item) return;
 
-  // UI Updates
-  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
-  document.getElementById('player-sub').textContent = 'Streaming from Cloud';
+  document.getElementById('player-name').textContent =
+    item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-sub').textContent =
+    'Google Drive · ' + FOLDER_NAME;
+
   renderFiles();
 
   try {
     audio.pause();
-    
-    // 1. Fetch the file data with the Auth header
-    const url = `${DRIVE_API}/files/${item.id}?alt=media`;
+
+    // UPDATED URL: Now includes the API Key required by Google Drive v3 for alt=media
+    const url = `${DRIVE_API}/files/${item.id}?alt=media&key=${API_KEY}`;
+
     const res = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${accessToken}` }
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
     });
 
     if (!res.ok) throw new Error("HTTP " + res.status);
 
-    // 2. Convert response to a Blob
     const blob = await res.blob();
 
-    // 3. Clean up the old URL to prevent memory leaks
     if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-
-    // 4. Create a local URL for the audio tag
     currentBlobUrl = URL.createObjectURL(blob);
+
     audio.src = currentBlobUrl;
-    audio.load(); // Force the audio element to reload the new source
+    audio.volume = muted ? 0 : volume;
 
     await audio.play();
+
     isPlaying = true;
     updatePlayBtn();
 
   } catch (e) {
-    console.error("Playback Error:", e);
-    alert(`Error: ${e.message}. Check if your OAuth token is still valid.`);
+    console.error(e);
+    alert('Could not play "' + item.name + '": ' + e.message);
   }
 }
 
@@ -690,110 +690,118 @@ function nextTrack() {
 function prevTrack() {
   if (!playlist.length) return;
   if (audio.currentTime > 3) { audio.currentTime = 0; return; }
-  playTrack((currentIndex - 1 + playlist.length) % playlist.length);
+  const prev = (currentIndex - 1 + playlist.length) % playlist.length;
+  playTrack(prev);
+}
+
+// ── UI RENDERING ────────────────────────────────────────
+function renderFiles() {
+  const container = document.getElementById('file-list');
+  container.innerHTML = '';
+
+  if (!filteredFiles.length) {
+    container.innerHTML = '<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>No files found</div>';
+    return;
+  }
+
+  filteredFiles.forEach((f, i) => {
+    const isMus = isAudio(f);
+    const isFol = isFolder(f);
+    const pIdx = playlist.indexOf(f);
+    const active = pIdx === currentIndex && currentIndex !== -1;
+
+    const row = document.createElement('div');
+    row.className = `file-row ${active ? 'playing' : ''}`;
+    
+    if (isFol) row.onclick = () => openSubFolder(f.id, f.name);
+    else if (isMus) row.onclick = () => playTrack(pIdx);
+
+    row.innerHTML = `
+      <div class="track-num-wrap">
+        <span class="track-num">${i+1}</span>
+        <span class="hover-play">${isFol ? '→' : '<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>'}</span>
+      </div>
+      <div class="track-thumb ${isFol ? 'folder-thumb' : (active ? 'playing-thumb' : '')}">
+        ${isFol 
+          ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>'
+          : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>'}
+      </div>
+      <div class="track-info">
+        <div class="track-name">${f.name}</div>
+        <div class="track-sub">${isFol ? 'Folder' : (isMus ? 'Audio Track' : 'File')}</div>
+      </div>
+      <div class="track-size">${f.size ? fmtSize(f.size) : '--'}</div>
+      <div class="track-dur">--</div>
+      <button class="row-action-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+    `;
+    container.appendChild(row);
+  });
+}
+
+function filterFiles() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  filteredFiles = allFiles.filter(f => f.name.toLowerCase().includes(q));
+  renderFiles();
+}
+
+function showLoading() {
+  document.getElementById('file-list').innerHTML = '<div class="state-msg"><div class="spinner"></div>Scanning Drive...</div>';
+}
+function showError(msg) {
+  document.getElementById('file-list').innerHTML = `<div class="state-msg" style="color:#ff4444"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>${msg}</div>`;
+}
+function showBrowser() {
+  document.getElementById('hero-view').style.display = 'none';
+  document.getElementById('browser-view').style.display = 'flex';
+}
+function hideBrowser() {
+  document.getElementById('hero-view').style.display = 'flex';
+  document.getElementById('browser-view').style.display = 'none';
+}
+
+// ── AUDIO EVENTS ────────────────────────────────────────
+audio.ontimeupdate = () => {
+  const p = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progress-fill').style.width = p + '%';
+  document.getElementById('current-time').textContent = fmtTime(audio.currentTime);
+  document.getElementById('total-time').textContent = fmtTime(audio.duration);
+};
+audio.onended = () => {
+  if (repeat) { audio.currentTime = 0; audio.play(); }
+  else nextTrack();
+};
+
+function seek(e) {
+  const rect = document.getElementById('progress-bar').getBoundingClientRect();
+  const p = (e.clientX - rect.left) / rect.width;
+  audio.currentTime = p * audio.duration;
+}
+function setVolume(e) {
+  const rect = document.getElementById('vol-bar').getBoundingClientRect();
+  volume = (e.clientX - rect.left) / rect.width;
+  volume = Math.max(0, Math.min(1, volume));
+  audio.volume = volume;
+  document.getElementById('vol-fill').style.width = (volume * 100) + '%';
+  muted = false;
+  updateVolIcon();
+}
+function toggleMute() {
+  muted = !muted;
+  audio.volume = muted ? 0 : volume;
+  updateVolIcon();
+}
+function updateVolIcon() {
+  const icon = document.getElementById('vol-icon');
+  if (muted || volume === 0) icon.innerHTML = '<path d="M11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
+  else icon.innerHTML = '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/>';
 }
 function toggleShuffle() {
   shuffle = !shuffle;
   document.getElementById('shuffle-btn').classList.toggle('active', shuffle);
 }
 function toggleRepeat() {
-  repeat = repeat === false ? 'all' : repeat === 'all' ? 'one' : false;
-  document.getElementById('repeat-btn').classList.toggle('active', repeat !== false);
-}
-audio.addEventListener('ended', () => {
-  if (repeat === 'one') { audio.currentTime = 0; audio.play(); }
-  else nextTrack();
-});
-audio.addEventListener('timeupdate', () => {
-  if (!audio.duration) return;
-  const pct = (audio.currentTime / audio.duration) * 100;
-  document.getElementById('progress-fill').style.width = pct + '%';
-  document.getElementById('current-time').textContent = fmtTime(audio.currentTime);
-  document.getElementById('total-time').textContent   = fmtTime(audio.duration);
-});
-function seek(e) {
-  const bar = document.getElementById('progress-bar');
-  if (audio.duration) audio.currentTime = (e.offsetX / bar.offsetWidth) * audio.duration;
-}
-function setVolume(e) {
-  const bar = document.getElementById('vol-bar');
-  volume = Math.max(0, Math.min(1, e.offsetX / bar.offsetWidth));
-  document.getElementById('vol-fill').style.width = (volume * 100) + '%';
-  audio.volume = muted ? 0 : volume;
-}
-function toggleMute() {
-  muted = !muted;
-  audio.volume = muted ? 0 : volume;
-}
-
-// ── RENDER ──────────────────────────────────────────────
-function showBrowser() {
-  document.getElementById('hero-view').style.display    = 'none';
-  document.getElementById('browser-view').style.display = 'flex';
-}
-function hideBrowser() {
-  document.getElementById('hero-view').style.display    = 'flex';
-  document.getElementById('browser-view').style.display = 'none';
-}
-function showLoading() {
-  document.getElementById('file-list').innerHTML =
-    `<div class="state-msg"><div class="spinner"></div><span>Loading files…</span></div>`;
-}
-function showError(msg) {
-  document.getElementById('file-list').innerHTML =
-    `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${msg}</span></div>`;
-}
-function filterFiles() {
-  const q = document.getElementById('search-input').value.toLowerCase();
-  filteredFiles = q ? allFiles.filter(f => f.name.toLowerCase().includes(q)) : allFiles;
-  renderFiles();
-}
-function renderFiles() {
-  const list = document.getElementById('file-list');
-  if (!filteredFiles.length) {
-    list.innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>No songs found</span></div>`;
-    return;
-  }
-  const sorted = [...filteredFiles].sort((a, b) => {
-    const af = isFolder(a), bf = isFolder(b);
-    if (af !== bf) return af ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-  let audioIdx = 0;
-  list.innerHTML = sorted.map(item => {
-    const folder   = isFolder(item);
-    const audioF   = isAudio(item);
-    const idx      = audioF ? audioIdx++ : -1;
-    const nowPlay  = playlist[currentIndex]?.id === item.id;
-    const size     = item.size ? fmtSize(Number(item.size)) : '';
-    const dispName = audioF ? item.name.replace(/\.[^.]+$/, '') : item.name;
-    const clickFn  = folder ? `openSubFolder('${esc(item.id)}','${esc(item.name)}')` : audioF ? `playTrack(${idx})` : '';
-
-    return `<div class="file-row ${nowPlay ? 'playing' : ''}" onclick="${clickFn}">
-      <div class="track-num-wrap">
-        <span class="track-num">${audioF ? idx + 1 : folder ? '—' : '·'}</span>
-        <span class="hover-play"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
-      </div>
-      <div class="track-thumb ${folder ? 'folder-thumb' : ''} ${nowPlay ? 'playing-thumb' : ''}">
-        ${item.thumbnailLink
-          ? `<img src="${item.thumbnailLink}" style="width:100%;height:100%;object-fit:cover;border-radius:4px" />`
-          : folder
-            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
-            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`}
-      </div>
-      <div class="track-info">
-        <div class="track-name">${dispName}</div>
-        <div class="track-sub">${folder ? 'Folder' : audioF ? item.name.split('.').pop().toUpperCase() : 'File'}</div>
-      </div>
-      <div class="track-size">${size}</div>
-      <div class="track-dur">—</div>
-      <button class="row-action-btn" onclick="event.stopPropagation();${clickFn}" title="${folder ? 'Open' : 'Play'}">
-        ${folder
-          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`
-          : `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`}
-      </button>
-    </div>`;
-  }).join('');
+  repeat = !repeat;
+  document.getElementById('repeat-btn').classList.toggle('active', repeat);
 }
 
 // ── NAVIGATION ──────────────────────────────────────────
@@ -828,15 +836,6 @@ function fmtSize(b) {
   if (b < 1048576) return (b/1024).toFixed(0) + ' KB';
   return (b/1048576).toFixed(1) + ' MB';
 }
-function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
-
-// ── INIT ────────────────────────────────────────────────
-window.addEventListener('load', () => {
-  // If client ID is stored, show setup hint
-  if (!CLIENT_ID) {
-    console.log('[CloudBeats] No Client ID found. Click "Connect Google Drive" to set up.');
-  }
-});
 </script>
 </body>
 </html>
