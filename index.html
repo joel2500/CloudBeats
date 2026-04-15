@@ -638,22 +638,19 @@ async function playTrack(idx) {
   renderFiles();
 
   try {
-    // Fetch with auth header, create blob URL
-    const r = await fetch(`${DRIVE_API}/files/${item.id}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const blob = await r.blob();
-    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-    currentBlobUrl = URL.createObjectURL(blob);
-    audio.src = currentBlobUrl;
+    // ✅ Direct streaming URL (NO fetch, NO blob)
+    const streamUrl = `https://www.googleapis.com/drive/v3/files/${item.id}?alt=media&access_token=${accessToken}`;
+
+    audio.src = streamUrl;
     audio.volume = muted ? 0 : volume;
+
     await audio.play();
     isPlaying = true;
     updatePlayBtn();
+
   } catch(e) {
     console.error(e);
-    alert('Could not stream "' + item.name + '": ' + e.message);
+    alert('Could not play "' + item.name + '": ' + e.message);
   }
 }
 
