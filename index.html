@@ -633,22 +633,35 @@ async function playTrack(idx) {
   const item = playlist[idx];
   if (!item) return;
 
-  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
-  document.getElementById('player-sub').textContent  = 'Google Drive · ' + FOLDER_NAME;
+  document.getElementById('player-name').textContent =
+    item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-sub').textContent =
+    'Google Drive · ' + FOLDER_NAME;
+
   renderFiles();
 
   try {
-    // ✅ Direct streaming URL (NO fetch, NO blob)
+    // 🛑 STOP any previous playback cleanly
+    audio.pause();
+    audio.src = '';
+
+    // ✅ Set new stream URL
     const streamUrl = `https://www.googleapis.com/drive/v3/files/${item.id}?alt=media&access_token=${accessToken}`;
 
     audio.src = streamUrl;
     audio.volume = muted ? 0 : volume;
 
+    // ✅ Wait until audio is ready before playing
+    await new Promise((resolve) => {
+      audio.onloadedmetadata = () => resolve();
+    });
+
     await audio.play();
+
     isPlaying = true;
     updatePlayBtn();
 
-  } catch(e) {
+  } catch (e) {
     console.error(e);
     alert('Could not play "' + item.name + '": ' + e.message);
   }
