@@ -3,25 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>CloudBeats – Your OneDrive Music Player</title>
+  <title>CloudBeats – Google Drive Music Player</title>
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
-  <script src="https://alcdn.msauth.net/browser/2.38.1/js/msal-browser.min.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     :root {
-      --bg: #0a0a0f;
-      --surface: #111118;
-      --surface2: #1a1a24;
-      --surface3: #22222f;
-      --accent: #c8ff00;
-      --accent2: #7c3aed;
-      --text: #f0f0f5;
-      --muted: #6b6b80;
-      --border: #2a2a38;
+      --bg: #0d0d0d;
+      --surface: #141414;
+      --surface2: #1e1e1e;
+      --surface3: #282828;
+      --accent: #1db954;
+      --accent-glow: rgba(29,185,84,0.15);
+      --text: #ffffff;
+      --muted: #6b6b6b;
+      --border: #2a2a2a;
       --player-h: 90px;
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; }
-
     body {
       font-family: 'DM Mono', monospace;
       background: var(--bg);
@@ -29,325 +28,273 @@
       display: flex;
       flex-direction: column;
     }
-
-    /* ── NOISE OVERLAY ── */
-    body::before {
+    body::after {
       content: '';
-      position: fixed;
-      inset: 0;
-      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
-      pointer-events: none;
-      z-index: 9999;
-      opacity: 0.4;
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.025'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 9999; opacity: 0.5;
     }
 
-    /* ── LAYOUT ── */
     .shell { display: flex; height: calc(100vh - var(--player-h)); overflow: hidden; }
 
-    /* ── SIDEBAR ── */
+    /* SIDEBAR */
     .sidebar {
-      width: 240px;
-      min-width: 240px;
-      background: var(--surface);
+      width: 240px; min-width: 240px;
+      background: #000;
+      display: flex; flex-direction: column;
       border-right: 1px solid var(--border);
-      display: flex;
-      flex-direction: column;
-      padding: 0;
-      overflow: hidden;
     }
-
     .logo {
-      padding: 28px 24px 20px;
+      padding: 28px 24px 24px;
       font-family: 'Syne', sans-serif;
-      font-size: 20px;
-      font-weight: 800;
-      letter-spacing: -0.5px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      border-bottom: 1px solid var(--border);
+      font-size: 19px; font-weight: 800; letter-spacing: -0.5px;
+      display: flex; align-items: center; gap: 10px;
     }
-    .logo-dot { width: 10px; height: 10px; background: var(--accent); border-radius: 50%; }
-    .logo span { color: var(--accent); }
-
-    .nav { padding: 16px 12px; flex: 1; overflow-y: auto; }
-    .nav-label { font-size: 10px; letter-spacing: 2px; color: var(--muted); padding: 8px 12px 6px; text-transform: uppercase; }
-
+    .logo-mark {
+      width: 32px; height: 32px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .logo-mark svg { width: 16px; height: 16px; color: #000; }
+    .nav { padding: 8px 12px; flex: 1; overflow-y: auto; }
+    .nav-label { font-size: 10px; letter-spacing: 2px; color: var(--muted); padding: 12px 12px 6px; text-transform: uppercase; }
     .nav-item {
-      display: flex; align-items: center; gap: 12px;
-      padding: 10px 12px; border-radius: 8px;
+      display: flex; align-items: center; gap: 14px;
+      padding: 10px 12px; border-radius: 6px;
       cursor: pointer; font-size: 13px; color: var(--muted);
-      transition: all 0.15s; margin-bottom: 2px;
+      transition: all 0.15s; margin-bottom: 1px;
     }
     .nav-item:hover { background: var(--surface2); color: var(--text); }
-    .nav-item.active { background: var(--surface3); color: var(--accent); }
+    .nav-item.active { color: var(--text); }
     .nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
-
-    .sidebar-footer {
-      padding: 16px;
-      border-top: 1px solid var(--border);
-    }
+    .sidebar-footer { padding: 16px; border-top: 1px solid var(--border); }
     .connect-btn {
-      width: 100%;
-      background: var(--accent);
-      color: #0a0a0f;
-      border: none;
-      border-radius: 8px;
-      padding: 11px;
-      font-family: 'Syne', sans-serif;
-      font-size: 13px;
-      font-weight: 700;
-      cursor: pointer;
-      transition: all 0.2s;
+      width: 100%; background: var(--accent); color: #000;
+      border: none; border-radius: 500px; padding: 12px;
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px;
       display: flex; align-items: center; justify-content: center; gap: 8px;
     }
-    .connect-btn:hover { background: #d4ff1a; transform: translateY(-1px); }
-    .connect-btn.connected { background: var(--surface3); color: var(--text); border: 1px solid var(--border); }
-    .connect-btn.connected:hover { background: #2a1a1a; color: #ff6b6b; }
+    .connect-btn:hover { background: #1ed760; transform: scale(1.02); }
+    .connect-btn.connected { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+    .connect-btn.connected:hover { color: #ff4444; background: #2a1a1a; }
 
-    /* ── MAIN CONTENT ── */
+    /* MAIN */
     .main {
-      flex: 1;
-      overflow-y: auto;
-      background: var(--bg);
-      display: flex;
-      flex-direction: column;
+      flex: 1; overflow-y: auto;
+      background: linear-gradient(180deg, #1a1a1a 0%, var(--bg) 340px);
+      display: flex; flex-direction: column;
     }
-
     .topbar {
       padding: 24px 32px 0;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
     }
-    .page-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 28px;
-      font-weight: 800;
-      letter-spacing: -1px;
-    }
-
+    .page-title { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -1px; }
     .search-bar {
       display: flex; align-items: center; gap: 8px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 14px;
-      width: 240px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 500px; padding: 8px 16px; width: 220px;
+      transition: border-color 0.15s;
     }
+    .search-bar:focus-within { border-color: var(--muted); }
     .search-bar input {
       background: none; border: none; outline: none;
-      color: var(--text); font-family: 'DM Mono', monospace;
-      font-size: 13px; width: 100%;
+      color: var(--text); font-family: 'DM Mono', monospace; font-size: 12px; width: 100%;
     }
     .search-bar input::placeholder { color: var(--muted); }
-    .search-bar svg { color: var(--muted); width: 15px; height: 15px; flex-shrink: 0; }
+    .search-bar svg { color: var(--muted); width: 14px; height: 14px; flex-shrink: 0; }
 
-    /* ── HERO (when not signed in) ── */
+    /* HERO */
     .hero {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 40px;
-      text-align: center;
-      gap: 20px;
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 60px 40px; text-align: center; gap: 24px;
     }
-    .hero-icon {
-      width: 80px; height: 80px;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 20px;
+    .hero-rings {
+      position: relative; width: 100px; height: 100px;
       display: flex; align-items: center; justify-content: center;
     }
-    .hero-icon svg { width: 36px; height: 36px; color: var(--accent); }
-    .hero h2 { font-family: 'Syne', sans-serif; font-size: 24px; font-weight: 700; }
-    .hero p { color: var(--muted); font-size: 13px; max-width: 360px; line-height: 1.7; }
-    .hero-cta {
-      background: var(--accent); color: #0a0a0f;
-      border: none; border-radius: 8px;
-      padding: 12px 28px;
-      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
-      cursor: pointer; transition: all 0.2s;
+    .hero-rings::before, .hero-rings::after {
+      content: ''; position: absolute; border-radius: 50%;
+      border: 1px solid var(--border); animation: pulse 3s ease-in-out infinite alternate;
     }
-    .hero-cta:hover { background: #d4ff1a; transform: translateY(-2px); }
+    .hero-rings::before { width: 80px; height: 80px; animation-delay: 0s; }
+    .hero-rings::after { width: 100px; height: 100px; animation-delay: 0.5s; }
+    @keyframes pulse {
+      0% { opacity: 0.2; transform: scale(1); }
+      100% { opacity: 0.5; transform: scale(1.06); }
+    }
+    .hero-icon-inner {
+      width: 56px; height: 56px; background: var(--accent);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 40px var(--accent-glow);
+    }
+    .hero-icon-inner svg { width: 24px; height: 24px; color: #000; }
+    .hero h2 { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 800; }
+    .hero p { color: var(--muted); font-size: 13px; max-width: 340px; line-height: 1.8; }
+    .hero-cta {
+      background: var(--accent); color: #000;
+      border: none; border-radius: 500px; padding: 14px 36px;
+      font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s; letter-spacing: 0.5px;
+    }
+    .hero-cta:hover { background: #1ed760; transform: scale(1.04); }
 
-    /* ── FOLDER BREADCRUMB ── */
+    /* FOLDER BADGE */
+    .folder-info {
+      margin: 20px 32px 0;
+      display: inline-flex; align-items: center; gap: 8px;
+      background: var(--accent-glow); border: 1px solid rgba(29,185,84,0.2);
+      border-radius: 500px; padding: 6px 14px; font-size: 12px; color: var(--accent);
+      width: fit-content;
+    }
+    .folder-info svg { width: 13px; height: 13px; }
+
+    /* BREADCRUMB */
     .breadcrumb {
-      padding: 20px 32px 0;
+      padding: 16px 32px 0;
       display: flex; align-items: center; gap: 6px;
-      font-size: 12px; color: var(--muted);
-      flex-shrink: 0;
+      font-size: 12px; color: var(--muted); flex-shrink: 0;
     }
     .breadcrumb-item { cursor: pointer; transition: color 0.15s; }
     .breadcrumb-item:hover { color: var(--accent); }
     .breadcrumb-sep { color: var(--border); }
 
-    /* ── FILE GRID / LIST ── */
-    .content-area { padding: 20px 32px 32px; flex: 1; }
-
+    /* FILE LIST */
+    .content-area { padding: 16px 32px 60px; flex: 1; }
     .section-header {
       display: flex; align-items: center; justify-content: space-between;
-      margin-bottom: 16px;
+      margin-bottom: 12px; padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
     }
     .section-title {
-      font-family: 'Syne', sans-serif;
-      font-size: 13px; font-weight: 700;
-      letter-spacing: 1px; text-transform: uppercase; color: var(--muted);
+      font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 700;
+      letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
     }
-    .view-toggle { display: flex; gap: 4px; }
-    .view-btn {
-      background: none; border: 1px solid var(--border);
-      border-radius: 6px; padding: 5px 8px;
-      color: var(--muted); cursor: pointer; transition: all 0.15s;
-    }
-    .view-btn.active, .view-btn:hover { border-color: var(--accent); color: var(--accent); }
-    .view-btn svg { width: 14px; height: 14px; display: block; }
-
-    /* List view */
-    .file-list { display: flex; flex-direction: column; gap: 2px; }
+    .file-list { display: flex; flex-direction: column; }
     .file-row {
       display: grid;
-      grid-template-columns: 40px 40px 1fr 120px 80px 40px;
-      align-items: center; gap: 12px;
-      padding: 10px 12px; border-radius: 8px;
-      cursor: pointer; transition: background 0.15s;
-      border: 1px solid transparent;
+      grid-template-columns: 36px 44px 1fr 100px 70px 36px;
+      align-items: center; gap: 14px;
+      padding: 8px 12px; border-radius: 6px;
+      cursor: pointer; transition: background 0.1s;
     }
     .file-row:hover { background: var(--surface2); }
-    .file-row.playing { background: var(--surface2); border-color: var(--border); }
+    .file-row:hover .track-num { opacity: 0; }
+    .file-row:hover .hover-play { opacity: 1; }
+    .file-row.playing { background: var(--surface2); }
     .file-row.playing .track-name { color: var(--accent); }
-
-    .track-num { font-size: 12px; color: var(--muted); text-align: center; }
+    .track-num-wrap { position: relative; width: 36px; text-align: center; }
+    .track-num { font-size: 13px; color: var(--muted); transition: opacity 0.1s; }
+    .hover-play {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      opacity: 0; transition: opacity 0.1s; color: var(--text);
+    }
+    .hover-play svg { width: 14px; height: 14px; }
     .track-thumb {
-      width: 40px; height: 40px; border-radius: 6px;
+      width: 44px; height: 44px; border-radius: 4px;
       background: var(--surface3);
       display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0; position: relative; overflow: hidden;
+      flex-shrink: 0; overflow: hidden;
     }
     .track-thumb svg { width: 18px; height: 18px; color: var(--muted); }
-    .track-thumb.folder { background: linear-gradient(135deg, #1a1a2e, #2a1a3e); }
-    .track-thumb.folder svg { color: var(--accent2); }
-
+    .track-thumb.folder-thumb { background: linear-gradient(135deg, #1a1a2e, #0d3b2a); }
+    .track-thumb.folder-thumb svg { color: var(--accent); opacity: 0.7; }
+    .track-thumb.playing-thumb { box-shadow: 0 0 0 2px var(--accent); }
     .track-info { min-width: 0; }
-    .track-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .track-artist { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .track-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .track-sub { font-size: 12px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .track-size { font-size: 12px; color: var(--muted); }
     .track-dur { font-size: 12px; color: var(--muted); text-align: right; }
-
-    .play-icon-btn {
+    .row-action-btn {
       background: none; border: none; cursor: pointer;
-      color: var(--muted); padding: 6px; border-radius: 6px;
-      transition: all 0.15s; display: flex;
+      color: var(--muted); padding: 6px; border-radius: 4px;
+      transition: all 0.15s; display: flex; opacity: 0;
     }
-    .play-icon-btn:hover { color: var(--accent); background: var(--surface3); }
-    .play-icon-btn svg { width: 16px; height: 16px; }
+    .file-row:hover .row-action-btn { opacity: 1; }
+    .row-action-btn:hover { color: var(--text); }
+    .row-action-btn svg { width: 15px; height: 15px; }
 
-    /* Loading / empty states */
+    /* STATE */
     .state-msg {
       display: flex; flex-direction: column; align-items: center;
-      justify-content: center; padding: 60px 20px; gap: 12px;
+      justify-content: center; padding: 80px 20px; gap: 14px;
       color: var(--muted); font-size: 13px; text-align: center;
     }
-    .state-msg svg { width: 36px; height: 36px; opacity: 0.4; }
+    .state-msg svg { width: 40px; height: 40px; opacity: 0.3; }
     .spinner {
-      width: 28px; height: 28px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+      width: 24px; height: 24px;
+      border: 2px solid var(--surface3); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.7s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ── PLAYER BAR ── */
+    /* PLAYER */
     .player {
-      height: var(--player-h);
-      background: var(--surface);
+      height: var(--player-h); background: #000;
       border-top: 1px solid var(--border);
       display: flex; align-items: center;
-      padding: 0 24px; gap: 20px;
-      flex-shrink: 0;
+      padding: 0 24px; gap: 16px; flex-shrink: 0;
     }
-
-    .player-track { display: flex; align-items: center; gap: 12px; width: 260px; min-width: 0; }
+    .player-track { display: flex; align-items: center; gap: 14px; width: 280px; min-width: 0; }
     .player-art {
-      width: 52px; height: 52px; border-radius: 8px;
-      background: var(--surface3);
-      display: flex; align-items: center; justify-content: center;
-      flex-shrink: 0;
+      width: 56px; height: 56px; border-radius: 4px; background: var(--surface3);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;
     }
     .player-art svg { width: 22px; height: 22px; color: var(--muted); }
     .player-info { min-width: 0; }
-    .player-name { font-size: 14px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .player-artist { font-size: 12px; color: var(--muted); margin-top: 2px; }
-
+    .player-name { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .player-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
     .player-controls { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 8px; }
-    .control-btns { display: flex; align-items: center; gap: 8px; }
+    .control-btns { display: flex; align-items: center; gap: 4px; }
     .ctrl-btn {
       background: none; border: none; cursor: pointer;
       color: var(--muted); padding: 8px; border-radius: 50%;
-      transition: all 0.15s; display: flex;
+      transition: all 0.15s; display: flex; align-items: center; justify-content: center;
     }
     .ctrl-btn:hover { color: var(--text); }
     .ctrl-btn svg { width: 18px; height: 18px; }
     .ctrl-btn.main-play {
-      background: var(--accent); color: #0a0a0f;
-      padding: 10px; width: 42px; height: 42px;
-      align-items: center; justify-content: center;
+      background: var(--text); color: #000;
+      width: 36px; height: 36px; padding: 0;
     }
-    .ctrl-btn.main-play:hover { background: #d4ff1a; transform: scale(1.05); }
+    .ctrl-btn.main-play:hover { transform: scale(1.06); background: #fff; }
     .ctrl-btn.active { color: var(--accent); }
-
-    .progress-row { display: flex; align-items: center; gap: 10px; width: 100%; max-width: 500px; }
+    .progress-row {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; max-width: 560px;
+    }
     .time-label { font-size: 11px; color: var(--muted); width: 36px; flex-shrink: 0; }
     .time-label:last-child { text-align: right; }
     .progress-bar {
       flex: 1; height: 4px; background: var(--surface3);
-      border-radius: 2px; cursor: pointer; position: relative;
+      border-radius: 2px; cursor: pointer; transition: height 0.15s;
     }
-    .progress-fill {
-      height: 100%; background: var(--accent); border-radius: 2px;
-      transition: width 0.3s linear; position: relative;
-    }
-    .progress-fill::after {
-      content: ''; position: absolute; right: -5px; top: -4px;
-      width: 12px; height: 12px; background: var(--accent);
-      border-radius: 50%; opacity: 0; transition: opacity 0.15s;
-    }
-    .progress-bar:hover .progress-fill::after { opacity: 1; }
-
-    .player-right { display: flex; align-items: center; gap: 8px; width: 180px; justify-content: flex-end; }
-    .volume-row { display: flex; align-items: center; gap: 8px; }
-    .volume-slider {
-      width: 80px; height: 4px; background: var(--surface3);
-      border-radius: 2px; cursor: pointer; position: relative;
-    }
-    .volume-fill { height: 100%; background: var(--muted); border-radius: 2px; }
-
+    .progress-bar:hover { height: 6px; }
+    .progress-fill { height: 100%; background: var(--text); border-radius: 2px; transition: width 0.25s linear; }
+    .progress-bar:hover .progress-fill { background: var(--accent); }
+    .player-right { display: flex; align-items: center; gap: 6px; width: 200px; justify-content: flex-end; }
+    .vol-bar { width: 80px; height: 4px; background: var(--surface3); border-radius: 2px; cursor: pointer; }
+    .vol-fill { height: 100%; background: var(--text); border-radius: 2px; }
     audio { display: none; }
-
-    /* scrollbar */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    ::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
 
-    /* Config modal */
+    /* MODAL */
     .modal-overlay {
-      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      position: fixed; inset: 0; background: rgba(0,0,0,0.85);
       display: flex; align-items: center; justify-content: center;
-      z-index: 1000; backdrop-filter: blur(4px);
+      z-index: 1000; backdrop-filter: blur(6px);
     }
     .modal {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 16px; padding: 32px;
-      width: 480px; max-width: 90vw;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 14px; padding: 36px; width: 500px; max-width: 92vw;
     }
-    .modal h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
-    .modal p { color: var(--muted); font-size: 13px; line-height: 1.7; margin-bottom: 20px; }
-    .modal label { display: block; font-size: 11px; color: var(--muted); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px; }
+    .modal-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+    .modal-logo svg { width: 28px; height: 28px; }
+    .modal h2 { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; margin-bottom: 6px; }
+    .modal p { color: var(--muted); font-size: 13px; line-height: 1.7; margin-bottom: 24px; }
+    .modal label { display: block; font-size: 10px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 6px; }
     .modal input {
       width: 100%; background: var(--surface2); border: 1px solid var(--border);
       border-radius: 8px; padding: 10px 14px; color: var(--text);
@@ -355,137 +302,135 @@
       margin-bottom: 16px; transition: border-color 0.15s;
     }
     .modal input:focus { border-color: var(--accent); }
-    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 4px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 8px; }
     .btn-ghost {
-      background: none; border: 1px solid var(--border);
-      border-radius: 8px; padding: 9px 18px;
-      color: var(--muted); cursor: pointer; font-family: 'DM Mono', monospace;
-      font-size: 13px; transition: all 0.15s;
+      background: none; border: 1px solid var(--border); border-radius: 500px; padding: 10px 22px;
+      color: var(--muted); cursor: pointer; font-family: 'DM Mono', monospace; font-size: 13px; transition: all 0.15s;
     }
-    .btn-ghost:hover { border-color: var(--text); color: var(--text); }
-    .btn-accent {
-      background: var(--accent); color: #0a0a0f;
-      border: none; border-radius: 8px; padding: 9px 18px;
-      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
-      cursor: pointer; transition: all 0.2s;
+    .btn-ghost:hover { border-color: var(--muted); color: var(--text); }
+    .btn-primary {
+      background: var(--accent); color: #000; border: none; border-radius: 500px; padding: 10px 28px;
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer; transition: all 0.15s;
     }
-    .btn-accent:hover { background: #d4ff1a; }
-    .step-list { list-style: none; counter-reset: steps; }
-    .step-list li {
-      counter-increment: steps;
+    .btn-primary:hover { background: #1ed760; }
+    .steps { margin-bottom: 20px; }
+    .step {
       display: flex; gap: 12px; align-items: flex-start;
-      margin-bottom: 10px; font-size: 12px; color: var(--muted); line-height: 1.6;
+      margin-bottom: 10px; font-size: 12px; color: var(--muted); line-height: 1.65;
     }
-    .step-list li::before {
-      content: counter(steps);
+    .step-num {
       background: var(--surface3); color: var(--accent);
       border-radius: 50%; width: 20px; height: 20px; min-width: 20px;
       display: flex; align-items: center; justify-content: center;
       font-size: 11px; font-family: 'Syne', sans-serif; font-weight: 700;
     }
-    .step-list a { color: var(--accent); text-decoration: none; }
-    .step-list a:hover { text-decoration: underline; }
+    .step a { color: var(--accent); text-decoration: none; }
+    .step a:hover { text-decoration: underline; }
+    .step code { background: var(--surface3); padding: 1px 6px; border-radius: 4px; color: var(--text); font-size: 11px; }
   </style>
 </head>
 <body>
 
 <audio id="audio-player"></audio>
 
-<!-- Config Modal -->
+<!-- MODAL -->
 <div class="modal-overlay" id="config-modal" style="display:none">
   <div class="modal">
-    <h2>Connect OneDrive</h2>
-    <p>Enter your Azure App Client ID to connect your OneDrive music library. This is free — no credit card needed.</p>
-
-    <ol class="step-list">
-      <li>Go to <a href="https://portal.azure.com" target="_blank">portal.azure.com</a> → App registrations → New registration</li>
-      <li>Name it anything, set type to <strong style="color:var(--text)">Single Page App (SPA)</strong>, redirect URI = this page's URL</li>
-      <li>After creating, copy the <strong style="color:var(--text)">Application (client) ID</strong></li>
-      <li>Go to API Permissions → Add → Microsoft Graph → Delegated → add <code style="color:var(--accent)">Files.Read</code> &amp; <code style="color:var(--accent)">User.Read</code></li>
-    </ol>
-
-    <label>Client ID</label>
-    <input type="text" id="client-id-input" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" />
-
-    <label>Redirect URI <span style="color:var(--muted);font-size:10px">(this page's URL)</span></label>
-    <input type="text" id="redirect-uri-input" />
-
+    <div class="modal-logo">
+      <svg viewBox="0 0 87.3 78" xmlns="http://www.w3.org/2000/svg">
+        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8h-27.5c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+        <path d="m43.65 25-13.75-23.8c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44a9.06 9.06 0 0 0 -1.2 4.5h27.5z" fill="#00ac47"/>
+        <path d="m73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5h-27.502l5.852 11.5z" fill="#ea4335"/>
+        <path d="m43.65 25 13.75-23.8c-1.35-.8-2.9-1.2-4.5-1.2h-18.5c-1.6 0-3.15.45-4.5 1.2z" fill="#00832d"/>
+        <path d="m59.8 53h-32.3l-13.75 23.8c1.35.8 2.9 1.2 4.5 1.2h50.8c1.6 0 3.15-.45 4.5-1.2z" fill="#2684fc"/>
+        <path d="m73.4 26.5-12.7-22c-.8-1.4-1.95-2.5-3.3-3.3l-13.75 23.8 16.15 27h27.45c0-1.55-.4-3.1-1.2-4.5z" fill="#ffba00"/>
+      </svg>
+      <span style="font-family:'Syne',sans-serif;font-weight:700;font-size:16px">Connect Google Drive</span>
+    </div>
+    <h2>Setup CloudBeats</h2>
+    <p>Enter your GCP OAuth Client ID. The app will only read your <strong style="color:var(--text)">Songs</strong> folder.</p>
+    <div class="steps">
+      <div class="step"><div class="step-num">1</div><div>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">GCP → Credentials</a> → your OAuth 2.0 Client ID → add this page's URL to <code>Authorized JavaScript Origins</code></div></div>
+      <div class="step"><div class="step-num">2</div><div>Make sure <code>Google Drive API</code> is enabled in APIs & Services → Library</div></div>
+      <div class="step"><div class="step-num">3</div><div>Paste your Client ID below and set the exact folder name in your Drive</div></div>
+    </div>
+    <label>GCP OAuth Client ID</label>
+    <input type="text" id="client-id-input" placeholder="xxxxxxxxxxx-xxxx.apps.googleusercontent.com" />
+    <label>Songs Folder Name (exact name in your Google Drive)</label>
+    <input type="text" id="folder-name-input" placeholder="Songs" />
     <div class="modal-actions">
       <button class="btn-ghost" onclick="closeModal()">Cancel</button>
-      <button class="btn-accent" onclick="saveConfig()">Save &amp; Connect</button>
+      <button class="btn-primary" onclick="saveConfig()">Save &amp; Connect</button>
     </div>
   </div>
 </div>
 
-<!-- App Shell -->
+<!-- SHELL -->
 <div class="shell">
-  <!-- SIDEBAR -->
   <aside class="sidebar">
     <div class="logo">
-      <div class="logo-dot"></div>
-      Cloud<span>Beats</span>
+      <div class="logo-mark">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+      </div>
+      Cloud<span style="color:var(--accent)">Beats</span>
     </div>
-
     <nav class="nav">
       <div class="nav-label">Library</div>
       <div class="nav-item active" onclick="navigateToRoot()">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>
-        All Music
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+        Songs
       </div>
-      <div class="nav-item" onclick="alert('Coming soon: Playlists!')">
+      <div class="nav-item" onclick="alert('Playlists coming soon!')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
         Playlists
       </div>
-      <div class="nav-item" onclick="alert('Coming soon: Recents!')">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-        Recent
-      </div>
-      <div class="nav-item" onclick="alert('Coming soon: Favorites!')">
+      <div class="nav-item" onclick="alert('Favorites coming soon!')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
         Favorites
       </div>
+      <div class="nav-item" onclick="openModal()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93l-1.41 1.41M4.93 4.93l1.41 1.41M4.93 19.07l1.41-1.41M19.07 19.07l-1.41-1.41M2 12h2M20 12h2M12 2v2M12 20v2"/></svg>
+        Settings
+      </div>
     </nav>
-
     <div class="sidebar-footer">
       <button class="connect-btn" id="connect-btn" onclick="handleConnectClick()">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-        Connect OneDrive
+        Connect Google Drive
       </button>
     </div>
   </aside>
 
-  <!-- MAIN -->
-  <main class="main" id="main-area">
-    <!-- Hero (default) -->
+  <main class="main">
+    <!-- HERO -->
     <div class="hero" id="hero-view">
-      <div class="hero-icon">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
-      </div>
-      <h2>Your music, your cloud.</h2>
-      <p>Connect your OneDrive to start streaming your music library directly in the browser — no downloads, no subscriptions.</p>
-      <button class="hero-cta" onclick="handleConnectClick()">Connect OneDrive →</button>
-    </div>
-
-    <!-- File browser (shown after sign-in) -->
-    <div id="browser-view" style="display:none; display:flex; flex-direction:column; height:100%; display:none">
-      <div class="topbar">
-        <div class="page-title" id="page-title">My Music</div>
-        <div class="search-bar">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input type="text" placeholder="Search files..." id="search-input" oninput="filterFiles()" />
+      <div class="hero-rings">
+        <div class="hero-icon-inner">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
         </div>
       </div>
+      <h2>Your music, your cloud.</h2>
+      <p>Connect your Google Drive to stream songs directly from your <strong style="color:var(--accent)">Songs</strong> folder — no downloads, no subscriptions.</p>
+      <button class="hero-cta" onclick="handleConnectClick()">Connect Google Drive →</button>
+    </div>
 
+    <!-- BROWSER -->
+    <div id="browser-view" style="display:none;flex-direction:column;height:100%">
+      <div class="topbar">
+        <div class="page-title" id="page-title">Songs</div>
+        <div class="search-bar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <input type="text" placeholder="Search songs..." id="search-input" oninput="filterFiles()" />
+        </div>
+      </div>
+      <div class="folder-info">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+        <span id="folder-badge">Songs</span> folder · Google Drive
+      </div>
       <div class="breadcrumb" id="breadcrumb"></div>
-
       <div class="content-area">
         <div class="section-header">
-          <span class="section-title" id="list-label">Files</span>
-          <div class="view-toggle">
-            <button class="view-btn active" title="List view">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-            </button>
-          </div>
+          <span class="section-title" id="list-label">Tracks</span>
         </div>
         <div class="file-list" id="file-list"></div>
       </div>
@@ -500,11 +445,10 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
     </div>
     <div class="player-info">
-      <div class="player-name" id="player-name">No track selected</div>
-      <div class="player-artist" id="player-artist">—</div>
+      <div class="player-name" id="player-name">Nothing playing</div>
+      <div class="player-sub" id="player-sub">—</div>
     </div>
   </div>
-
   <div class="player-controls">
     <div class="control-btns">
       <button class="ctrl-btn" id="shuffle-btn" onclick="toggleShuffle()" title="Shuffle">
@@ -514,7 +458,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="19 20 9 12 19 4 19 20"/><line x1="5" y1="19" x2="5" y2="5"/></svg>
       </button>
       <button class="ctrl-btn main-play" id="play-btn" onclick="togglePlay()" title="Play/Pause">
-        <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" stroke="none"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>
       </button>
       <button class="ctrl-btn" onclick="nextTrack()" title="Next">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 4 15 12 5 20 5 4"/><line x1="19" y1="5" x2="19" y2="19"/></svg>
@@ -525,256 +469,359 @@
     </div>
     <div class="progress-row">
       <span class="time-label" id="current-time">0:00</span>
-      <div class="progress-bar" onclick="seek(event)" id="progress-bar">
+      <div class="progress-bar" id="progress-bar" onclick="seek(event)">
         <div class="progress-fill" id="progress-fill" style="width:0%"></div>
       </div>
       <span class="time-label" id="total-time">0:00</span>
     </div>
   </div>
-
   <div class="player-right">
-    <div class="volume-row">
-      <button class="ctrl-btn" onclick="toggleMute()" style="padding:4px">
-        <svg id="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
-      </button>
-      <div class="volume-slider" onclick="setVolume(event)" id="vol-slider">
-        <div class="volume-fill" id="vol-fill" style="width:80%"></div>
-      </div>
+    <button class="ctrl-btn" onclick="toggleMute()" style="padding:6px">
+      <svg id="vol-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 010 14.14M15.54 8.46a5 5 0 010 7.07"/></svg>
+    </button>
+    <div class="vol-bar" onclick="setVolume(event)" id="vol-bar">
+      <div class="vol-fill" id="vol-fill" style="width:80%"></div>
     </div>
   </div>
 </div>
 
 <script>
-// ─── CONFIG ─────────────────────────────────────────────
-let CLIENT_ID = localStorage.getItem('cb_client_id') || '';
-let REDIRECT_URI = localStorage.getItem('cb_redirect_uri') ||
-  window.location.origin + window.location.pathname;
+// ── CONFIG ──────────────────────────────────────────────
+let CLIENT_ID   = localStorage.getItem('cb_gd_clientid') || '';
+let FOLDER_NAME = localStorage.getItem('cb_gd_folder')   || 'Songs';
+const SCOPES    = 'https://www.googleapis.com/auth/drive.readonly';
+const AUDIO_EXTS= ['mp3','m4a','flac','wav','ogg','aac','opus','wma'];
+const DRIVE_API = 'https://www.googleapis.com/drive/v3';
 
-const SCOPES = ['User.Read', 'Files.Read'];
-const GRAPH = 'https://graph.microsoft.com/v1.0';
-const AUDIO_EXTS = ['mp3','m4a','flac','wav','ogg','aac','opus','wma'];
-
-// ─── STATE ──────────────────────────────────────────────
-let msalInstance = null;
-let accessToken = null;
-let playlist = [];
+// ── STATE ───────────────────────────────────────────────
+let accessToken  = null;
+let tokenClient  = null;
+let allFiles     = [];
+let filteredFiles = [];
+let playlist     = [];
 let currentIndex = -1;
-let audio = document.getElementById('audio-player');
+let isPlaying    = false;
+let shuffle      = false;
+let repeat       = false;
+let volume       = 0.8;
+let muted        = false;
+let breadcrumbs  = [];
+let rootFolderId = null;
+let currentBlobUrl = null;
 
-// ─── DEBUG HELPER ───────────────────────────────────────
-function log(msg, obj) {
-  console.log("[CloudBeats]", msg, obj || "");
+const audio = document.getElementById('audio-player');
+
+// ── MODAL ───────────────────────────────────────────────
+function openModal() {
+  document.getElementById('client-id-input').value  = CLIENT_ID;
+  document.getElementById('folder-name-input').value = FOLDER_NAME;
+  document.getElementById('config-modal').style.display = 'flex';
+}
+function closeModal() {
+  document.getElementById('config-modal').style.display = 'none';
+}
+function saveConfig() {
+  const cid = document.getElementById('client-id-input').value.trim();
+  const fn  = document.getElementById('folder-name-input').value.trim() || 'Songs';
+  if (!cid) { alert('Please enter your GCP Client ID'); return; }
+  CLIENT_ID = cid; FOLDER_NAME = fn;
+  localStorage.setItem('cb_gd_clientid', CLIENT_ID);
+  localStorage.setItem('cb_gd_folder',   FOLDER_NAME);
+  closeModal();
+  startConnect();
 }
 
-// ─── MSAL INIT ──────────────────────────────────────────
-function initMsal() {
-  try {
-    if (!CLIENT_ID) {
-      alert("Client ID missing");
-      return false;
-    }
-
-    if (!window.msal) {
-      alert("MSAL library not loaded. Check CDN.");
-      return false;
-    }
-
-    log("Initializing MSAL...");
-
-    msalInstance = new msal.PublicClientApplication({
-      auth: {
-        clientId: CLIENT_ID,
-        redirectUri: REDIRECT_URI,
-        authority: "https://login.microsoftonline.com/common"
-      },
-      cache: {
-        cacheLocation: "localStorage"
-      }
-    });
-
-    log("MSAL initialized");
-    return true;
-
-  } catch (e) {
-    console.error(e);
-    alert("MSAL init failed: " + e.message);
-    return false;
-  }
+// ── CONNECT ─────────────────────────────────────────────
+function handleConnectClick() {
+  if (accessToken) { confirmSignOut(); return; }
+  if (!CLIENT_ID)  { openModal(); return; }
+  startConnect();
 }
 
-// ─── LOGIN ──────────────────────────────────────────────
-async function getToken() {
-  try {
-    const accounts = msalInstance.getAllAccounts();
-
-    const request = {
-      scopes: SCOPES
-    };
-
-    if (accounts.length > 0) {
-      const res = await msalInstance.acquireTokenSilent({
-        ...request,
-        account: accounts[0]
-      });
-      return res.accessToken;
-    }
-
-    const res = await msalInstance.loginPopup(request);
-    return res.accessToken;
-
-  } catch (e) {
-    console.error("LOGIN ERROR:", e);
-    alert("Login failed: " + (e.message || e));
-    return null;
-  }
-}
-
-// ─── CONNECT FLOW ───────────────────────────────────────
-async function handleConnectClick() {
-  log("Connect clicked");
-
-  if (!CLIENT_ID) {
-    openModal();
+function startConnect() {
+  if (!window.google || !google.accounts) {
+    alert('Google Identity Services not loaded yet. Please refresh the page.');
     return;
   }
-
-  if (!initMsal()) return;
-
-  try {
-    document.getElementById('connect-btn').innerText = "Connecting...";
-
-    accessToken = await getToken();
-
-    if (!accessToken) {
-      log("No token received");
-      return;
-    }
-
-    document.getElementById('connect-btn').innerText = "Connected";
-    document.getElementById('connect-btn').classList.add("connected");
-
-    log("Connected successfully");
-
-    showBrowser();
-    loadFolder(null);
-
-  } catch (e) {
-    console.error(e);
-    alert("Connection failed: " + e.message);
-  }
-}
-
-// ─── GRAPH API ──────────────────────────────────────────
-async function graphGet(url) {
-  const res = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: SCOPES,
+    callback: async (resp) => {
+      if (resp.error) { alert('Auth error: ' + resp.error); return; }
+      accessToken = resp.access_token;
+      setConnected(true);
+      showBrowser();
+      await findSongsFolder();
     }
   });
-
-  if (!res.ok) {
-    throw new Error(await res.text());
-  }
-
-  return res.json();
+  tokenClient.requestAccessToken();
 }
 
-// ─── LOAD FILES ─────────────────────────────────────────
-async function loadFolder(id) {
+function confirmSignOut() {
+  if (!confirm('Disconnect Google Drive?')) return;
+  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+  accessToken = null; rootFolderId = null;
+  setConnected(false); hideBrowser();
+  audio.pause(); isPlaying = false; updatePlayBtn();
+}
+
+function setConnected(on) {
+  const btn = document.getElementById('connect-btn');
+  btn.className = on ? 'connect-btn connected' : 'connect-btn';
+  btn.innerHTML = on
+    ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><polyline points="20 6 9 17 4 12"/></svg> Connected`
+    : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:15px;height:15px"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg> Connect Google Drive`;
+}
+
+// ── DRIVE API ───────────────────────────────────────────
+async function driveGet(url) {
+  const r = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function findSongsFolder() {
+  showLoading();
   try {
-    const url = id
-      ? `${GRAPH}/me/drive/items/${id}/children`
-      : `${GRAPH}/me/drive/root/children`;
-
-    const data = await graphGet(url);
-
-    const files = data.value || [];
-    playlist = files.filter(f => isAudio(f));
-
-    renderFiles(files);
-
-    log("Files loaded", files.length);
-
-  } catch (e) {
-    console.error(e);
-    alert("Failed to load files: " + e.message);
+    const q = `name='${FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
+    const data = await driveGet(`${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=files(id,name)&pageSize=10`);
+    const folders = data.files || [];
+    if (!folders.length) {
+      showError(`Folder "${FOLDER_NAME}" not found in your Google Drive.<br><br>Create a folder with that exact name, add your songs there, then click Settings to update the folder name.`);
+      return;
+    }
+    rootFolderId = folders[0].id;
+    document.getElementById('folder-badge').textContent = FOLDER_NAME;
+    breadcrumbs = [{ name: FOLDER_NAME, id: rootFolderId }];
+    await loadFolder(rootFolderId);
+  } catch(e) {
+    showError('Error: ' + e.message);
   }
 }
 
-// ─── CHECK AUDIO ────────────────────────────────────────
+async function loadFolder(folderId) {
+  showLoading();
+  try {
+    const q = `'${folderId}' in parents and trashed=false`;
+    const fields = 'files(id,name,mimeType,size,thumbnailLink)';
+    const data = await driveGet(
+      `${DRIVE_API}/files?q=${encodeURIComponent(q)}&fields=${encodeURIComponent(fields)}&pageSize=500&orderBy=name`
+    );
+    allFiles = data.files || [];
+    filteredFiles = allFiles;
+    playlist = allFiles.filter(f => isAudio(f));
+    renderFiles();
+    updateBreadcrumb();
+    document.getElementById('list-label').textContent = `${allFiles.length} items · ${playlist.length} tracks`;
+    document.getElementById('page-title').textContent = breadcrumbs[breadcrumbs.length - 1].name;
+  } catch(e) { showError('Failed: ' + e.message); }
+}
+
 function isAudio(item) {
   if (!item?.name) return false;
   const ext = item.name.split('.').pop().toLowerCase();
+  if ((item.mimeType || '').startsWith('audio/')) return true;
   return AUDIO_EXTS.includes(ext);
 }
-
-// ─── STREAM FILE ────────────────────────────────────────
-async function streamFile(item) {
-  const data = await graphGet(
-    `${GRAPH}/me/drive/items/${item.id}?select=@microsoft.graph.downloadUrl`
-  );
-
-  return data['@microsoft.graph.downloadUrl'];
+function isFolder(item) {
+  return item.mimeType === 'application/vnd.google-apps.folder';
 }
 
-// ─── PLAY AUDIO ─────────────────────────────────────────
-async function playAudio(index) {
-  const item = playlist[index];
+// ── PLAYBACK ────────────────────────────────────────────
+async function playTrack(idx) {
+  currentIndex = idx;
+  const item = playlist[idx];
   if (!item) return;
 
-  currentIndex = index;
+  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-sub').textContent  = 'Google Drive · ' + FOLDER_NAME;
+  renderFiles();
 
-  const url = await streamFile(item);
-
-  audio.src = url;
-  audio.play();
-
-  log("Playing:", item.name);
+  try {
+    // Fetch with auth header, create blob URL
+    const r = await fetch(`${DRIVE_API}/files/${item.id}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const blob = await r.blob();
+    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
+    currentBlobUrl = URL.createObjectURL(blob);
+    audio.src = currentBlobUrl;
+    audio.volume = muted ? 0 : volume;
+    await audio.play();
+    isPlaying = true;
+    updatePlayBtn();
+  } catch(e) {
+    console.error(e);
+    alert('Could not stream "' + item.name + '": ' + e.message);
+  }
 }
 
-// ─── SIMPLE UI RENDER ───────────────────────────────────
-function renderFiles(files) {
-  const list = document.getElementById("file-list");
+function togglePlay() {
+  if (!audio.src) return;
+  if (isPlaying) { audio.pause(); isPlaying = false; }
+  else { audio.play(); isPlaying = true; }
+  updatePlayBtn();
+}
+function updatePlayBtn() {
+  document.getElementById('play-icon').outerHTML = isPlaying
+    ? `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`
+    : `<svg id="play-icon" viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+}
+function nextTrack() {
+  if (!playlist.length) return;
+  const next = shuffle ? Math.floor(Math.random() * playlist.length) : (currentIndex + 1) % playlist.length;
+  playTrack(next);
+}
+function prevTrack() {
+  if (!playlist.length) return;
+  if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+  playTrack((currentIndex - 1 + playlist.length) % playlist.length);
+}
+function toggleShuffle() {
+  shuffle = !shuffle;
+  document.getElementById('shuffle-btn').classList.toggle('active', shuffle);
+}
+function toggleRepeat() {
+  repeat = repeat === false ? 'all' : repeat === 'all' ? 'one' : false;
+  document.getElementById('repeat-btn').classList.toggle('active', repeat !== false);
+}
+audio.addEventListener('ended', () => {
+  if (repeat === 'one') { audio.currentTime = 0; audio.play(); }
+  else nextTrack();
+});
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return;
+  const pct = (audio.currentTime / audio.duration) * 100;
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('current-time').textContent = fmtTime(audio.currentTime);
+  document.getElementById('total-time').textContent   = fmtTime(audio.duration);
+});
+function seek(e) {
+  const bar = document.getElementById('progress-bar');
+  if (audio.duration) audio.currentTime = (e.offsetX / bar.offsetWidth) * audio.duration;
+}
+function setVolume(e) {
+  const bar = document.getElementById('vol-bar');
+  volume = Math.max(0, Math.min(1, e.offsetX / bar.offsetWidth));
+  document.getElementById('vol-fill').style.width = (volume * 100) + '%';
+  audio.volume = muted ? 0 : volume;
+}
+function toggleMute() {
+  muted = !muted;
+  audio.volume = muted ? 0 : volume;
+}
 
-  if (!files.length) {
-    list.innerHTML = "<p>No files found</p>";
+// ── RENDER ──────────────────────────────────────────────
+function showBrowser() {
+  document.getElementById('hero-view').style.display    = 'none';
+  document.getElementById('browser-view').style.display = 'flex';
+}
+function hideBrowser() {
+  document.getElementById('hero-view').style.display    = 'flex';
+  document.getElementById('browser-view').style.display = 'none';
+}
+function showLoading() {
+  document.getElementById('file-list').innerHTML =
+    `<div class="state-msg"><div class="spinner"></div><span>Loading files…</span></div>`;
+}
+function showError(msg) {
+  document.getElementById('file-list').innerHTML =
+    `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>${msg}</span></div>`;
+}
+function filterFiles() {
+  const q = document.getElementById('search-input').value.toLowerCase();
+  filteredFiles = q ? allFiles.filter(f => f.name.toLowerCase().includes(q)) : allFiles;
+  renderFiles();
+}
+function renderFiles() {
+  const list = document.getElementById('file-list');
+  if (!filteredFiles.length) {
+    list.innerHTML = `<div class="state-msg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg><span>No songs found</span></div>`;
     return;
   }
+  const sorted = [...filteredFiles].sort((a, b) => {
+    const af = isFolder(a), bf = isFolder(b);
+    if (af !== bf) return af ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  let audioIdx = 0;
+  list.innerHTML = sorted.map(item => {
+    const folder   = isFolder(item);
+    const audioF   = isAudio(item);
+    const idx      = audioF ? audioIdx++ : -1;
+    const nowPlay  = playlist[currentIndex]?.id === item.id;
+    const size     = item.size ? fmtSize(Number(item.size)) : '';
+    const dispName = audioF ? item.name.replace(/\.[^.]+$/, '') : item.name;
+    const clickFn  = folder ? `openSubFolder('${esc(item.id)}','${esc(item.name)}')` : audioF ? `playTrack(${idx})` : '';
 
-  list.innerHTML = files.map((f, i) => `
-    <div onclick="${isAudio(f) ? `playAudio(${i})` : ''}"
-         style="padding:10px;cursor:pointer">
-      ${f.name}
-    </div>
-  `).join("");
+    return `<div class="file-row ${nowPlay ? 'playing' : ''}" onclick="${clickFn}">
+      <div class="track-num-wrap">
+        <span class="track-num">${audioF ? idx + 1 : folder ? '—' : '·'}</span>
+        <span class="hover-play"><svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></span>
+      </div>
+      <div class="track-thumb ${folder ? 'folder-thumb' : ''} ${nowPlay ? 'playing-thumb' : ''}">
+        ${item.thumbnailLink
+          ? `<img src="${item.thumbnailLink}" style="width:100%;height:100%;object-fit:cover;border-radius:4px" />`
+          : folder
+            ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>`
+            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`}
+      </div>
+      <div class="track-info">
+        <div class="track-name">${dispName}</div>
+        <div class="track-sub">${folder ? 'Folder' : audioF ? item.name.split('.').pop().toUpperCase() : 'File'}</div>
+      </div>
+      <div class="track-size">${size}</div>
+      <div class="track-dur">—</div>
+      <button class="row-action-btn" onclick="event.stopPropagation();${clickFn}" title="${folder ? 'Open' : 'Play'}">
+        ${folder
+          ? `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>`
+          : `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>`}
+      </button>
+    </div>`;
+  }).join('');
 }
 
-// ─── UI HELPERS ─────────────────────────────────────────
-function showBrowser() {
-  document.getElementById("hero-view").style.display = "none";
-  document.getElementById("browser-view").style.display = "flex";
+// ── NAVIGATION ──────────────────────────────────────────
+function openSubFolder(id, name) {
+  breadcrumbs.push({ name, id });
+  loadFolder(id);
+}
+function navigateToRoot() {
+  if (!accessToken || !rootFolderId) return;
+  breadcrumbs = [{ name: FOLDER_NAME, id: rootFolderId }];
+  loadFolder(rootFolderId);
+}
+function jumpBreadcrumb(idx) {
+  breadcrumbs = breadcrumbs.slice(0, idx + 1);
+  loadFolder(breadcrumbs[idx].id);
+}
+function updateBreadcrumb() {
+  document.getElementById('breadcrumb').innerHTML = breadcrumbs.map((b, i) =>
+    i < breadcrumbs.length - 1
+      ? `<span class="breadcrumb-item" onclick="jumpBreadcrumb(${i})">${b.name}</span><span class="breadcrumb-sep">/</span>`
+      : `<span class="breadcrumb-item" style="color:var(--text)">${b.name}</span>`
+  ).join('');
 }
 
-// ─── MODAL (simple) ─────────────────────────────────────
-function openModal() {
-  document.getElementById("config-modal").style.display = "flex";
+// ── UTILS ───────────────────────────────────────────────
+function fmtTime(s) {
+  if (isNaN(s)) return '0:00';
+  return `${Math.floor(s/60)}:${String(Math.floor(s%60)).padStart(2,'0')}`;
 }
-function closeModal() {
-  document.getElementById("config-modal").style.display = "none";
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1048576) return (b/1024).toFixed(0) + ' KB';
+  return (b/1048576).toFixed(1) + ' MB';
 }
-function saveConfig() {
-  CLIENT_ID = document.getElementById("client-id-input").value;
-  REDIRECT_URI = document.getElementById("redirect-uri-input").value;
+function esc(s) { return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'"); }
 
-  localStorage.setItem("cb_client_id", CLIENT_ID);
-  localStorage.setItem("cb_redirect_uri", REDIRECT_URI);
-
-  closeModal();
-}
-
-// ─── INIT DEBUG ─────────────────────────────────────────
-window.addEventListener("load", () => {
-  log("App loaded");
+// ── INIT ────────────────────────────────────────────────
+window.addEventListener('load', () => {
+  // If client ID is stored, show setup hint
+  if (!CLIENT_ID) {
+    console.log('[CloudBeats] No Client ID found. Click "Connect Google Drive" to set up.');
+  }
 });
 </script>
 </body>
