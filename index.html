@@ -631,43 +631,32 @@ async function playTrack(idx) {
   const item = playlist[idx];
   if (!item) return;
 
-  document.getElementById('player-name').textContent =
-    item.name.replace(/\.[^.]+$/, '');
-  document.getElementById('player-sub').textContent =
-    'Google Drive · ' + FOLDER_NAME;
+  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-sub').textContent = 'Google Drive · ' + FOLDER_NAME;
 
   renderFiles();
 
   try {
     audio.pause();
+    
+    // 1. Get a fresh URL with the Token and API Key built-in
+    // This allows the <audio> tag to bypass certain "fetch" restrictions
+    const authenticatedUrl = `${DRIVE_API}/files/${item.id}?alt=media&key=${API_KEY}&access_token=${accessToken}`;
 
-    // UPDATED URL: Now includes the API Key required by Google Drive v3 for alt=media
-    const url = `${DRIVE_API}/files/${item.id}?alt=media&key=${API_KEY}`;
-
-    const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
-    });
-
-    if (!res.ok) throw new Error("HTTP " + res.status);
-
-    const blob = await res.blob();
-
+    // 2. Clear any old data
     if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-    currentBlobUrl = URL.createObjectURL(blob);
-
-    audio.src = currentBlobUrl;
-    audio.volume = muted ? 0 : volume;
+    
+    // 3. Directly set the audio source
+    audio.src = authenticatedUrl;
+    audio.load();
 
     await audio.play();
-
     isPlaying = true;
     updatePlayBtn();
 
   } catch (e) {
-    console.error(e);
-    alert('Could not play "' + item.name + '": ' + e.message);
+    console.error("Playback Error:", e);
+    alert('Playback failed. Please ensure you checked the "See and download files" box during login.');
   }
 }
 
