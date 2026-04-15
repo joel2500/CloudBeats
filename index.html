@@ -633,42 +633,40 @@ async function playTrack(idx) {
   const item = playlist[idx];
   if (!item) return;
 
-  document.getElementById('player-name').textContent =
-    item.name.replace(/\.[^.]+$/, '');
-  document.getElementById('player-sub').textContent =
-    'Google Drive · ' + FOLDER_NAME;
-
+  // UI Updates
+  document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
+  document.getElementById('player-sub').textContent = 'Streaming from Cloud';
   renderFiles();
 
   try {
     audio.pause();
-
+    
+    // 1. Fetch the file data with the Auth header
     const url = `${DRIVE_API}/files/${item.id}?alt=media`;
-
     const res = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${accessToken}`
-      }
+      headers: { 'Authorization': `Bearer ${accessToken}` }
     });
 
     if (!res.ok) throw new Error("HTTP " + res.status);
 
+    // 2. Convert response to a Blob
     const blob = await res.blob();
 
+    // 3. Clean up the old URL to prevent memory leaks
     if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-    currentBlobUrl = URL.createObjectURL(blob);
 
+    // 4. Create a local URL for the audio tag
+    currentBlobUrl = URL.createObjectURL(blob);
     audio.src = currentBlobUrl;
-    audio.volume = muted ? 0 : volume;
+    audio.load(); // Force the audio element to reload the new source
 
     await audio.play();
-
     isPlaying = true;
     updatePlayBtn();
 
   } catch (e) {
-    console.error(e);
-    alert('Could not play "' + item.name + '": ' + e.message);
+    console.error("Playback Error:", e);
+    alert(`Error: ${e.message}. Check if your OAuth token is still valid.`);
   }
 }
 
