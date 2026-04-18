@@ -630,42 +630,75 @@ function isFolder(item) {
 // ── PLAYBACK ────────────────────────────────────────────
 async function playTrack(idx) {
   currentIndex = idx;
-  console.log('Playing:', item.name, '| MIME:', item.mimeType, '| ID:', item.id);
   const item = playlist[idx];
-  if (!item) return;
+  if (!item) { console.error('No item at index', idx); return; }
+
+  console.log('▶ Playing:', item.name);
+  console.log('  MIME:', item.mimeType);
+  console.log('  ID:', item.id);
+  console.log('  Size:', item.size);
 
   document.getElementById('player-name').textContent = item.name.replace(/\.[^.]+$/, '');
   document.getElementById('player-sub').textContent = 'Google Drive · ' + FOLDER_NAME;
-
   renderFiles();
 
   try {
     audio.pause();
+    if (currentBlobUrl) { URL.revokeObjectURL(currentBlobUrl); currentBlobUrl = null; }
 
-    if (currentBlobUrl) {
-      URL.revokeObjectURL(currentBlobUrl);
-      currentBlobUrl = null;
+    console.log('  Fetching from Drive...');
+    const response = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${item.id}?alt=media`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    console.log('  Response status:', response.status);
+    console.log('  Response type:', response.headers.get('content-type'));
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error('  Fetch failed:', errText);
+      alert('Fetch failed: ' + errText);
+      return;
     }
 
-    // Fetch the file as a blob using the Authorization header
-    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}?alt=media`, {
-      headers: { Authorization: `Bearer ${accessToken}` }
-    }); 
-
-    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-
+    console.log('  Converting to blob...');
     const blob = await response.blob();
+    console.log('  Blob size:', blob.size, '| Blob type:', blob.type);
+
+    if (blob.size === 0) { console.error('  Blob is empty!'); alert('File is empty'); return; }
+
     currentBlobUrl = URL.createObjectURL(blob);
+    console.log('  Blob URL:', currentBlobUrl);
 
     audio.src = currentBlobUrl;
+
+    // Listen for errors on the audio element
+    audio.onerror = (e) => {
+      console.error('  Audio element error:', audio.error?.code, audio.error?.message);
+    };
+
+    audio.oncanplay = () => console.log('  Audio can play!');
+
     audio.load();
-    await audio.play();
-    isPlaying = true;
-    updatePlayBtn();
+    console.log('  Calling audio.play()...');
+    const playPromise = audio.play();
+    if (playPromise !== undefined) {
+      playPromise
+        .then(() => {
+          console.log('  Playback started!');
+          isPlaying = true;
+          updatePlayBtn();
+        })
+        .catch(e => {
+          console.error('  play() rejected:', e.name, e.message);
+          alert('Play failed: ' + e.name + ' — ' + e.message);
+        });
+    }
 
   } catch (e) {
-    console.error("Playback Error:", e);
-    alert('Playback failed: ' + e.message);
+    console.error('  Exception:', e);
+    alert('Exception: ' + e.message);
   }
 }
 
