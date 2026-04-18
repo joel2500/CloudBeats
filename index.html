@@ -645,11 +645,10 @@ async function playTrack(idx) {
     }
 
     // Fetch the file as a blob using the Authorization header
-    const response = await fetch(
-      `${DRIVE_API}/files/${item.id}?alt=media`,
-      { headers: { Authorization: `Bearer ${accessToken}` } }
-    );
-
+    const response = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}?alt=media`, {
+      headers: { Authorization: `Bearer ${accessToken}` }
+    }); 
+    
     if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
 
     const blob = await response.blob();
