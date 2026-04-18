@@ -638,24 +638,32 @@ async function playTrack(idx) {
 
   try {
     audio.pause();
-    
-    // Change: Pass the access_token in the URL for the media stream
-    // This is often more reliable for audio streaming than the Authorization header
-    const url = `${DRIVE_API}/files/${item.id}?alt=media&key=${API_KEY}&access_token=${accessToken}`;
 
-    if (currentBlobUrl) URL.revokeObjectURL(currentBlobUrl);
-    
-    // Set the source directly to the authenticated URL
-    audio.src = url;
+    if (currentBlobUrl) {
+      URL.revokeObjectURL(currentBlobUrl);
+      currentBlobUrl = null;
+    }
+
+    // Fetch the file as a blob using the Authorization header
+    const response = await fetch(
+      `${DRIVE_API}/files/${item.id}?alt=media`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+
+    const blob = await response.blob();
+    currentBlobUrl = URL.createObjectURL(blob);
+
+    audio.src = currentBlobUrl;
     audio.load();
-
     await audio.play();
     isPlaying = true;
     updatePlayBtn();
 
   } catch (e) {
     console.error("Playback Error:", e);
-    alert('Playback failed. Please ensure your Google Drive API is ENABLED in the Google Cloud Console.');
+    alert('Playback failed: ' + e.message);
   }
 }
 
